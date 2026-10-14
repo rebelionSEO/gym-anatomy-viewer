@@ -884,6 +884,43 @@ function updateModelInfo() {
 }
 
 // ---------------------------------------------------------------------------
+// Keyboard shortcuts
+// ---------------------------------------------------------------------------
+//
+// Only fire when the user is NOT in a form element (so typing in the file
+// name of a dropped file, or scrubbing with the keyboard, still works) and
+// no modal is open (so Space doesn't play/pause while reading the help).
+
+function anyModalOpen() {
+  return !helpModal.hidden || !mappingModal.hidden;
+}
+function isTypingTarget(el) {
+  return el && el.matches && el.matches('input, select, textarea, [contenteditable="true"]');
+}
+function togglePlayback() {
+  if (!state.activeAction) return;
+  if (state.activeAction.paused) {
+    if (state.activeAction.time >= state.activeClip.duration - 1e-3) state.activeAction.time = 0;
+    state.activeAction.paused = false;
+  } else {
+    state.activeAction.paused = true;
+  }
+}
+
+window.addEventListener('keydown', e => {
+  if (isTypingTarget(e.target)) return;
+  if (anyModalOpen()) return;
+  if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault();
+    togglePlayback();
+  } else if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    skinToggle.checked = !skinToggle.checked;
+    skinToggleApply();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Render loop
 // ---------------------------------------------------------------------------
 
