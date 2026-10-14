@@ -1,0 +1,20 @@
+{
+  "timeStepSeconds": 0.25,
+  "animationDurations": {
+    "bench_press": 24.0,
+    "bicep_curl": 16.0,
+    "squat": 18.0,
+    "deadlift": 18.0
+  },
+  "repCounts": {
+    "bench_press": 8,
+    "bicep_curl": 8,
+    "squat": 6,
+    "deadlift": 6
+  },
+  "createdBy": "gym-anatomy-viewer placeholder build (Opus 4.7, 2026-10-13)",
+  "assetScope": "Wiring placeholder only. Geometry is primitive boxes positioned where muscles roughly sit; NOT anatomically accurate. Activation curves are heuristic approximations informed by general EMG literature on compound lifts.",
+  "muscleCount": 40,
+  "animationCount": 4,
+  "notes": "Replace human_anatomy_gym_v1.glb with a real rigged anatomy glb (same muscles/{canonical_name} node naming) and the demo + JSON pipeline continue to work unchanged."
+}

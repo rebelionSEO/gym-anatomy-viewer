@@ -1,0 +1,123 @@
+{
+  "version": "1.0",
+  "groups": {
+    "chest": {
+      "label": "Chest",
+      "color": "#e04f4f",
+      "muscles": [
+        "muscles/pectoralis_major_left",
+        "muscles/pectoralis_major_right"
+      ]
+    },
+    "biceps": {
+      "label": "Biceps",
+      "color": "#e07a4f",
+      "muscles": [
+        "muscles/biceps_brachii_left_long_head",
+        "muscles/biceps_brachii_left_short_head",
+        "muscles/biceps_brachii_right_long_head",
+        "muscles/biceps_brachii_right_short_head"
+      ]
+    },
+    "triceps": {
+      "label": "Triceps",
+      "color": "#d49a3f",
+      "muscles": [
+        "muscles/triceps_brachii_left_long_head",
+        "muscles/triceps_brachii_left_lateral_head",
+        "muscles/triceps_brachii_left_medial_head",
+        "muscles/triceps_brachii_right_long_head",
+        "muscles/triceps_brachii_right_lateral_head",
+        "muscles/triceps_brachii_right_medial_head"
+      ]
+    },
+    "core": {
+      "label": "Core",
+      "color": "#c8c04a",
+      "muscles": [
+        "muscles/rectus_abdominis",
+        "muscles/external_oblique_left",
+        "muscles/external_oblique_right",
+        "muscles/internal_oblique_left",
+        "muscles/internal_oblique_right",
+        "muscles/transverse_abdominis"
+      ]
+    },
+    "glutes": {
+      "label": "Glutes",
+      "color": "#8ab84a",
+      "muscles": [
+        "muscles/gluteus_maximus_left",
+        "muscles/gluteus_maximus_right",
+        "muscles/gluteus_medius_left",
+        "muscles/gluteus_medius_right"
+      ]
+    },
+    "quads": {
+      "label": "Quads",
+      "color": "#4ab8a0",
+      "muscles": [
+        "muscles/rectus_femoris_left",
+        "muscles/rectus_femoris_right",
+        "muscles/vastus_lateralis_left",
+        "muscles/vastus_lateralis_right",
+        "muscles/vastus_medialis_left",
+        "muscles/vastus_medialis_right",
+        "muscles/vastus_intermedius_left",
+        "muscles/vastus_intermedius_right"
+      ]
+    },
+    "hamstrings": {
+      "label": "Hamstrings",
+      "color": "#4a8ab8",
+      "muscles": [
+        "muscles/biceps_femoris_left",
+        "muscles/biceps_femoris_right",
+        "muscles/semitendinosus_left",
+        "muscles/semitendinosus_right",
+        "muscles/semimembranosus_left",
+        "muscles/semimembranosus_right"
+      ]
+    },
+    "calves": {
+      "label": "Calves",
+      "color": "#7a6ac8",
+      "muscles": [
+        "muscles/gastrocnemius_left",
+        "muscles/gastrocnemius_right",
+        "muscles/soleus_left",
+        "muscles/soleus_right"
+      ]
+    }
+  },
+  "cameraPresets": {
+    "default":  { "position": [0.0, 1.1, 3.2], "target": [0.0, 1.1, 0.0] },
+    "front":    { "position": [0.0, 1.2, 2.6], "target": [0.0, 1.1, 0.0] },
+    "back":     { "position": [0.0, 1.2, -2.6], "target": [0.0, 1.1, 0.0] },
+    "left":     { "position": [-2.6, 1.2, 0.0], "target": [0.0, 1.1, 0.0] },
+    "right":    { "position": [2.6, 1.2, 0.0], "target": [0.0, 1.1, 0.0] },
+    "upper":    { "position": [0.0, 1.4, 2.0], "target": [0.0, 1.3, 0.0] },
+    "lower":    { "position": [0.0, 0.6, 2.0], "target": [0.0, 0.6, 0.0] }
+  },
+  "labelAnchors": {
+    "pectoralis_major": [0.0, 1.42, 0.14],
+    "biceps_brachii":   [-0.34, 1.30, 0.08],
+    "triceps_brachii":  [-0.36, 1.30, -0.08],
+    "rectus_abdominis": [0.0, 1.10, 0.14],
+    "gluteus_maximus":  [0.15, 0.92, -0.18],
+    "quadriceps":       [-0.18, 0.65, 0.10],
+    "hamstrings":       [-0.15, 0.65, -0.12],
+    "calves":           [-0.14, 0.25, -0.10]
+  },
+  "controls": {
+    "camera":    ["rotate", "pan", "zoom"],
+    "display":   ["toggleGroup", "isolateMuscle", "transparentSkin", "cutaway"],
+    "animation": ["play", "pause", "scrub", "selectClip", "loop"],
+    "overlay":   ["activationChart", "muscleLabels"]
+  },
+  "animations": ["bench_press", "bicep_curl", "squat", "deadlift"],
+  "notes": {
+    "nodeNaming": "All muscle meshes live at the node name muscles/{canonical_name}. The container node muscles groups them; group containers human/skin and human/skeleton hold placeholder body shells.",
+    "swapIn": "Replace human_anatomy_gym_v1.glb with a real rigged anatomy glb that uses the same muscles/{name} node convention — no demo code changes needed."
+  }
+}

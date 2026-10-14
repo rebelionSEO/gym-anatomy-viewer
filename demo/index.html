@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anatomy Gym Demo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <aside id="panel">
+      <header>
+        <h1>Anatomy Gym</h1>
+        <div class="placeholder-note">Placeholder geometry — see README.</div>
+      </header>
+
+      <section>
+        <h2>Animation</h2>
+        <div class="row">
+          <select id="clipSelect"></select>
+        </div>
+        <div class="row">
+          <button id="playBtn">Play</button>
+          <button id="pauseBtn">Pause</button>
+          <label class="loop-label">
+            <input type="checkbox" id="loopToggle" checked /> Loop
+          </label>
+        </div>
+        <div class="row">
+          <input type="range" id="scrubber" min="0" max="1" step="0.001" value="0" />
+          <div class="time-readout" id="timeReadout">0.00 / 0.00s</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Muscle groups</h2>
+        <div id="groupToggles"></div>
+      </section>
+
+      <section>
+        <h2>Isolate</h2>
+        <select id="isolateSelect">
+          <option value="">— none —</option>
+        </select>
+      </section>
+
+      <section>
+        <h2>Display</h2>
+        <label><input type="checkbox" id="skinToggle" checked /> Show skin</label>
+        <label><input type="checkbox" id="skinTransparent" checked /> Transparent skin</label>
+        <label><input type="checkbox" id="skeletonToggle" /> Show skeleton</label>
+        <label><input type="checkbox" id="labelToggle" /> Show labels</label>
+      </section>
+
+      <section>
+        <h2>Camera</h2>
+        <div id="cameraPresets" class="camera-grid"></div>
+      </section>
+
+      <section>
+        <h2>Activation chart</h2>
+        <div class="row">
+          <select id="chartMuscle"></select>
+        </div>
+        <canvas id="chart" width="300" height="110"></canvas>
+      </section>
+
+      <footer>
+        <div class="small">Swap in a real rigged anatomy glb that uses <code>muscles/{name}</code> node names and this demo keeps working.</div>
+      </footer>
+    </aside>
+
+    <main id="stage">
+      <div id="status">Loading…</div>
+      <canvas id="viewer"></canvas>
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
