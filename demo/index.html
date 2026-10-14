@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Anatomy Gym Demo</title>
+  <title>Gym Anatomy Viewer</title>
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
   {
@@ -18,9 +18,22 @@
   <div id="app">
     <aside id="panel">
       <header>
-        <h1>Anatomy Gym</h1>
-        <div class="placeholder-note">Placeholder geometry — see README.</div>
+        <h1>Gym Anatomy</h1>
+        <div class="placeholder-note">Placeholder geometry — not anatomically accurate.</div>
       </header>
+
+      <section>
+        <h2>Model</h2>
+        <div class="row">
+          <button id="loadDefaultBtn" title="Reload the bundled placeholder glb">Default</button>
+          <label class="file-pick-btn">
+            <input type="file" id="glbFile" accept=".glb,.gltf" hidden />
+            Choose .glb
+          </label>
+        </div>
+        <div class="hint">Or drag &amp; drop a .glb onto the viewer.</div>
+        <div class="hint" id="modelInfo">model: default placeholder</div>
+      </section>
 
       <section>
         <h2>Animation</h2>
@@ -57,7 +70,6 @@
         <label><input type="checkbox" id="skinToggle" checked /> Show skin</label>
         <label><input type="checkbox" id="skinTransparent" checked /> Transparent skin</label>
         <label><input type="checkbox" id="skeletonToggle" /> Show skeleton</label>
-        <label><input type="checkbox" id="labelToggle" /> Show labels</label>
       </section>
 
       <section>
@@ -73,15 +85,65 @@
         <canvas id="chart" width="300" height="110"></canvas>
       </section>
 
+      <section>
+        <h2>Mapping</h2>
+        <div class="row">
+          <button id="openMappingBtn">Edit mapping…</button>
+          <button id="resetMappingBtn" title="Clear saved mappings for all glbs">Reset</button>
+        </div>
+        <div class="hint" id="mappingStatus">—</div>
+      </section>
+
       <footer>
-        <div class="small">Swap in a real rigged anatomy glb that uses <code>muscles/{name}</code> node names and this demo keeps working.</div>
+        <div class="small">Swap in a real rigged anatomy glb that uses <code>muscles/{name}</code> node names (or map it with the mapping UI) and this demo keeps working.</div>
       </footer>
     </aside>
 
     <main id="stage">
+      <button id="helpBtn" class="help-pill" aria-label="About this demo">?</button>
       <div id="status">Loading…</div>
       <canvas id="viewer"></canvas>
+      <div id="dropOverlay" class="drop-overlay">
+        <div class="drop-inner">Drop a .glb file to load it</div>
+      </div>
     </main>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Help modal -->
+  <div id="helpModal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <button class="modal-close" data-close-modal="helpModal" aria-label="Close">×</button>
+      <h3>About this demo</h3>
+      <p><strong>This is placeholder demo hardware.</strong> The 3D model is primitive boxes
+      standing in for muscles; the activation curves are heuristic approximations, not EMG
+      measurements. Nothing here is anatomically accurate.</p>
+      <p>Replace <code>human_anatomy_gym_v1.glb</code> with a real rigged anatomy glb that uses
+      the <code>muscles/{name}</code> node convention from <code>ui_manifest.json</code> and
+      the viewer continues working. For meshes with any other naming, drag &amp; drop a .glb,
+      then use <em>Edit mapping…</em> to map each muscle key to a mesh in your glb. Mappings
+      are saved per filename in your browser.</p>
+      <p>If a mapped mesh has morph targets named <code>contract_{muscle}_01</code> they are
+      driven directly from the activation values. Otherwise the viewer falls back to tint +
+      a small scale pulse.</p>
+    </div>
+  </div>
+
+  <!-- Mapping modal -->
+  <div id="mappingModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <button class="modal-close" data-close-modal="mappingModal" aria-label="Close">×</button>
+      <h3>Mesh mapping</h3>
+      <p class="small">Assign each muscle key (left) to a mesh name from the loaded glb (right). Auto-matches on normalized names; override anything you like. Saved to this browser.</p>
+      <div class="mapping-toolbar">
+        <button id="mappingAutoBtn">Re-run auto match</button>
+        <button id="mappingClearBtn">Clear all</button>
+        <button id="mappingSaveBtn" class="primary">Save &amp; apply</button>
+      </div>
+      <div id="mappingList" class="mapping-list"></div>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>
