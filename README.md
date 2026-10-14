@@ -83,6 +83,20 @@ The demo loads the glb, both JSON files, and shows:
 See [`CHANGELOG.md`](CHANGELOG.md) for the full change list and
 [`TESTING.md`](TESTING.md) for a manual test checklist.
 
+## Going from placeholder → real anatomy
+
+The viewer is designed to work unchanged against any glb that follows the
+`muscles/{canonical_name}` node convention and uses the four exercise clip
+names from `ui_manifest.json`. The honest path to a real anatomy model is a
+Blender session against **Z-Anatomy** (CC BY-SA):
+[`scripts/BLENDER_WORKFLOW.md`](scripts/BLENDER_WORKFLOW.md) is a full
+end-to-end walkthrough, and [`scripts/blender_import_z_anatomy.py`](scripts/blender_import_z_anatomy.py)
+automates the mesh-renaming step so Z-Anatomy's names line up with the
+viewer's conventions without manual clicking.
+
+Rigging and animation retargeting still need Blender clicking — no code
+can shortcut those — but the renamer collapses the most tedious part.
+
 ## Loading snippet (three.js)
 
 ```js

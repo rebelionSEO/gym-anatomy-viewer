@@ -6,6 +6,18 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `scripts/blender_import_z_anatomy.py` — Blender script that reads
+  `ui_manifest.json`, matches Z-Anatomy mesh names to the viewer's
+  canonical muscle keys (handles Latin / `.L` / `.R` / `sinister` / `caput
+  longum` variants), prints a dry-run report, and when `APPLY = True`
+  renames the matched meshes to `muscles/<canonical>` so a glb exported
+  from Blender drops into the viewer with no manual mapping work.
+- `scripts/BLENDER_WORKFLOW.md` — end-to-end walkthrough from Blender
+  install to glb export: Z-Anatomy download, running the renamer,
+  manually resolving unmatched muscles, Rigify / Auto-Rig Pro, Mixamo
+  retargeting, glb export settings, and troubleshooting. Honest about
+  which steps are automated (naming) vs. manual (rigging, animation
+  retarget, export).
 - Runtime visual polish pass in `demo/app.js:polishGeometryAndMaterials`.
   After every glb mount, long-limb skin meshes (upper arms, forearms,
   thighs, shins, neck) swap their cylinder geometry for `CapsuleGeometry`
