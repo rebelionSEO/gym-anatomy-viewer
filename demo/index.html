@@ -31,6 +31,9 @@
             Choose .glb
           </label>
         </div>
+        <div class="row">
+          <button id="loadSampleBtn" title="Loads sample_real_anatomy.glb — primitive boxes with per-muscle morph targets so you can see morph driving in action">Load sample real model</button>
+        </div>
         <div class="hint">Or drag &amp; drop a .glb onto the viewer.</div>
         <div class="hint" id="modelInfo">model: default placeholder</div>
       </section>
@@ -139,9 +142,11 @@
       <p class="small">Assign each muscle key (left) to a mesh name from the loaded glb (right). Auto-matches on normalized names; override anything you like. Saved to this browser.</p>
       <div class="mapping-toolbar">
         <button id="mappingAutoBtn">Re-run auto match</button>
-        <button id="mappingClearBtn">Clear all</button>
+        <button id="mappingClearBtn" title="Reset selections in this modal (does not touch localStorage until you Save)">Clear in modal</button>
+        <button id="mappingClearFileBtn" title="Wipe the saved mapping for the currently loaded file">Clear mapping for this file</button>
         <button id="mappingSaveBtn" class="primary">Save &amp; apply</button>
       </div>
+      <p class="small">Hover a row to outline the matching mesh in the viewer.</p>
       <div id="mappingList" class="mapping-list"></div>
     </div>
   </div>

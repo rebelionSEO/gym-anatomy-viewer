@@ -20,6 +20,7 @@ import { GLTFLoader }       from 'three/addons/loaders/GLTFLoader.js';
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GLB_URL = '../human_anatomy_gym_v1.glb';
+const SAMPLE_GLB_URL  = '../sample_real_anatomy.glb';
 const ACTIVATION_URL  = '../muscles_activation.json';
 const MANIFEST_URL    = '../ui_manifest.json';
 const METADATA_URL    = '../metadata.json';
@@ -50,17 +51,19 @@ const chartMuscle     = $('chartMuscle');
 const chartCanvas     = $('chart');
 
 const loadDefaultBtn  = $('loadDefaultBtn');
+const loadSampleBtn   = $('loadSampleBtn');
 const glbFileInput    = $('glbFile');
 const modelInfo       = $('modelInfo');
 
-const openMappingBtn  = $('openMappingBtn');
-const resetMappingBtn = $('resetMappingBtn');
-const mappingStatus   = $('mappingStatus');
-const mappingModal    = $('mappingModal');
-const mappingList     = $('mappingList');
-const mappingAutoBtn  = $('mappingAutoBtn');
-const mappingClearBtn = $('mappingClearBtn');
-const mappingSaveBtn  = $('mappingSaveBtn');
+const openMappingBtn      = $('openMappingBtn');
+const resetMappingBtn     = $('resetMappingBtn');
+const mappingStatus       = $('mappingStatus');
+const mappingModal        = $('mappingModal');
+const mappingList         = $('mappingList');
+const mappingAutoBtn      = $('mappingAutoBtn');
+const mappingClearBtn     = $('mappingClearBtn');
+const mappingClearFileBtn = $('mappingClearFileBtn');
+const mappingSaveBtn      = $('mappingSaveBtn');
 
 const helpBtn   = $('helpBtn');
 const helpModal = $('helpModal');
@@ -222,7 +225,9 @@ const state = {
   skinNodes: [],
   skeletonNodes: [],
   availableMeshNames: [],   // every mesh name in the current glb (for mapping UI)
+  meshesByName: new Map(),  // name -> THREE.Mesh (any named mesh — powers hover preview)
   mapping: {},              // muscleKey -> mesh name (persisted)
+  hoverOutline: null,       // THREE.BoxHelper used by the mapping-UI hover preview
 };
 
 function disposeObject(obj) {
@@ -236,11 +241,13 @@ function disposeObject(obj) {
 }
 
 function tearDownCurrentModel() {
+  clearHoverOutline();
   if (state.activeAction) { state.activeAction.stop(); state.activeAction = null; }
   state.activeClip = null;
   state.mixer = null;
   state.clips = [];
   state.muscleNodes.clear();
+  state.meshesByName.clear();
   state.baseColors  = new WeakMap();
   state.baseScales  = new WeakMap();
   state.skinNodes   = [];
@@ -270,6 +277,7 @@ function mountGltf(gltf, originId) {
   state.modelRoot.traverse(obj => {
     if (!obj.name || !obj.isMesh) return;
     state.availableMeshNames.push(obj.name);
+    state.meshesByName.set(obj.name, obj);
     if (obj.name.startsWith('skin/')) {
       obj.material = obj.material.clone();
       state.skinNodes.push(obj);
@@ -415,6 +423,7 @@ function handleFile(file) {
 // ---------------------------------------------------------------------------
 
 loadDefaultBtn.addEventListener('click', () => loadGlbFromUrl(DEFAULT_GLB_URL, 'default'));
+loadSampleBtn.addEventListener('click', () => loadGlbFromUrl(SAMPLE_GLB_URL, 'sample_real_anatomy.glb'));
 
 glbFileInput.addEventListener('change', e => {
   const file = e.target.files?.[0];
@@ -731,7 +740,10 @@ function updateActivation() {
 // ---------------------------------------------------------------------------
 
 function openModal(el)  { el.hidden = false; }
-function closeModal(el) { el.hidden = true;  }
+function closeModal(el) {
+  el.hidden = true;
+  if (el === mappingModal) clearHoverOutline();
+}
 
 document.querySelectorAll('[data-close-modal]').forEach(btn => {
   btn.addEventListener('click', () => closeModal($(btn.dataset.closeModal)));
@@ -745,6 +757,28 @@ openMappingBtn.addEventListener('click', () => {
   renderMappingList();
   openModal(mappingModal);
 });
+
+// Hover preview: outline the mesh referenced by the row's current <select>
+// value in the main viewer. Uses THREE.BoxHelper so no materials are touched
+// and the activation driver can keep running underneath.
+function setHoverPreview(meshName) {
+  clearHoverOutline();
+  if (!meshName) return;
+  const target = state.meshesByName.get(meshName);
+  if (!target) return;
+  state.hoverOutline = new THREE.BoxHelper(target, 0xffe066);
+  state.hoverOutline.renderOrder = 999;
+  scene.add(state.hoverOutline);
+}
+function clearHoverOutline() {
+  if (state.hoverOutline) {
+    scene.remove(state.hoverOutline);
+    state.hoverOutline.geometry?.dispose();
+    state.hoverOutline = null;
+  }
+}
+// Clear hover outline if the modal closes without a mouseleave event firing.
+mappingModal.addEventListener('click', e => { if (e.target === mappingModal) clearHoverOutline(); });
 
 resetMappingBtn.addEventListener('click', () => {
   if (!confirm('Clear saved mappings for every glb? This can\'t be undone.')) return;
@@ -792,6 +826,12 @@ function renderMappingList() {
 
     row.appendChild(label);
     row.appendChild(sel);
+
+    // Hover preview: outline whichever mesh this row currently points at.
+    row.addEventListener('mouseenter', () => setHoverPreview(sel.value));
+    row.addEventListener('mouseleave', clearHoverOutline);
+    sel.addEventListener('change', () => setHoverPreview(sel.value));
+
     mappingList.appendChild(row);
   }
 }
@@ -806,6 +846,18 @@ mappingAutoBtn.addEventListener('click', () => {
 mappingClearBtn.addEventListener('click', () => {
   state.mapping = {};
   renderMappingList();
+});
+
+mappingClearFileBtn.addEventListener('click', () => {
+  if (!confirm(`Wipe the saved mapping for "${state.originId}"? The current view will also reset.`)) return;
+  const all = loadAllMappings();
+  delete all[state.originId];
+  saveAllMappings(all);
+  state.mapping = autoMatchMapping(MUSCLE_KEYS, state.availableMeshNames);
+  applyMappingToScene();
+  renderMappingList();
+  refreshMappingStatus();
+  toast(`Cleared saved mapping for ${state.originId}`, 'info');
 });
 
 mappingSaveBtn.addEventListener('click', () => {
