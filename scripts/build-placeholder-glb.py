@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 """
 build-placeholder-glb.py
-Generates human_anatomy_gym_v1.glb as a wiring placeholder — primitive boxes
-positioned where muscles roughly sit, named with the canonical "muscles/{name}"
-convention so a real anatomy glb can drop in later without changing the demo.
+Generates human_anatomy_gym_v1.glb — a rigged humanoid placeholder.
 
-This is NOT anatomically accurate geometry. It exists so the viewer, JSON files,
-UI toggles, and animation playback can be exercised end-to-end.
+What's in the glb:
+  * Cylinder-primitive humanoid (head, neck, chest/waist/pelvis torso,
+    arms, legs). All limbs are children of joint nodes so rotating a
+    joint moves everything downstream.
+  * 40 muscle meshes (chest, biceps, triceps, core, glutes, quads,
+    hamstrings, calves) parented to the joint their muscle crosses,
+    so they move with the limb instead of floating.
+  * Four exercise animations (bench_press, bicep_curl, squat, deadlift)
+    with per-joint rotation keyframes shaped like real lift mechanics
+    (shoulder flex + elbow extension for presses, hip + knee flex for
+    squats, hip hinge for deadlift, etc).
+
+This is still NOT anatomically accurate — cylinders are not muscle
+bellies and the animations are stylized demonstrations, not mocap.
+It just reads as a *figure performing a lift* instead of a floating
+pile of blocks.
 """
 
 import json
@@ -16,159 +28,317 @@ from pathlib import Path
 
 OUT_PATH = Path(__file__).resolve().parent.parent / "human_anatomy_gym_v1.glb"
 
+# ---------------------------------------------------------------------------
+# Joints (hierarchical rig). Each entry: (name, parent, local_translation)
+# Positions in meters. Root at feet, +Y up, +Z toward camera.
+# ---------------------------------------------------------------------------
+
+JOINTS = [
+    ("root",         None,          (0.00,  0.00,  0.00)),
+    ("pelvis",       "root",        (0.00,  0.95,  0.00)),
+    ("spine_mid",    "pelvis",      (0.00,  0.09,  0.00)),
+    ("spine_upper",  "spine_mid",   (0.00,  0.15,  0.00)),
+    ("neck",         "spine_upper", (0.00,  0.19,  0.00)),
+    ("head",         "neck",        (0.00,  0.09,  0.00)),
+
+    ("shoulder_L",   "spine_upper", (-0.18, 0.17,  0.00)),
+    ("elbow_L",      "shoulder_L",  (0.00, -0.28,  0.00)),
+    ("wrist_L",      "elbow_L",     (0.00, -0.26,  0.00)),
+    ("hand_L",       "wrist_L",     (0.00, -0.09,  0.00)),
+
+    ("shoulder_R",   "spine_upper", ( 0.18, 0.17,  0.00)),
+    ("elbow_R",      "shoulder_R",  (0.00, -0.28,  0.00)),
+    ("wrist_R",      "elbow_R",     (0.00, -0.26,  0.00)),
+    ("hand_R",       "wrist_R",     (0.00, -0.09,  0.00)),
+
+    ("hip_L",        "pelvis",      (-0.10, -0.04, 0.00)),
+    ("knee_L",       "hip_L",       (0.00, -0.42,  0.00)),
+    ("ankle_L",      "knee_L",      (0.00, -0.42,  0.00)),
+    ("foot_L",       "ankle_L",     (0.00, -0.04, 0.08)),
+
+    ("hip_R",        "pelvis",      ( 0.10, -0.04, 0.00)),
+    ("knee_R",       "hip_R",       (0.00, -0.42,  0.00)),
+    ("ankle_R",      "knee_R",      (0.00, -0.42,  0.00)),
+    ("foot_R",       "ankle_R",     (0.00, -0.04, 0.08)),
+]
 
 # ---------------------------------------------------------------------------
-# Scene definition — approximate placements on a ~1.8 m humanoid, origin at
-# feet, facing +Z. Only placeholder cubes; swap for real meshes later.
+# Skin / limb meshes. Children of a joint. (name, parent_joint, local_translation, scale)
+# Cylinders are 1 unit tall along +Y, 1 unit diameter. scale.y = length,
+# scale.x = scale.z = diameter.
 # ---------------------------------------------------------------------------
 
-# (name, position, scale, group)
+SKIN_LIMBS = [
+    ("skin/head",         "head",        (0.00,  0.08,  0.02), (0.15, 0.22, 0.17)),
+    ("skin/neck",         "neck",        (0.00,  0.04,  0.00), (0.08, 0.09, 0.08)),
+    ("skin/chest",        "spine_upper", (0.00,  0.08,  0.00), (0.34, 0.26, 0.21)),
+    ("skin/waist",        "spine_mid",   (0.00,  0.07,  0.00), (0.26, 0.18, 0.18)),
+    ("skin/pelvis_core",  "pelvis",      (0.00,  0.00,  0.00), (0.30, 0.14, 0.19)),
+
+    ("skin/upperarm_L",   "shoulder_L",  (0.00, -0.14,  0.00), (0.095, 0.28, 0.095)),
+    ("skin/upperarm_R",   "shoulder_R",  (0.00, -0.14,  0.00), (0.095, 0.28, 0.095)),
+    ("skin/forearm_L",    "elbow_L",     (0.00, -0.13,  0.00), (0.078, 0.26, 0.078)),
+    ("skin/forearm_R",    "elbow_R",     (0.00, -0.13,  0.00), (0.078, 0.26, 0.078)),
+    ("skin/hand_L",       "wrist_L",     (0.00, -0.09,  0.00), (0.075, 0.18, 0.045)),
+    ("skin/hand_R",       "wrist_R",     (0.00, -0.09,  0.00), (0.075, 0.18, 0.045)),
+
+    ("skin/thigh_L",      "hip_L",       (0.00, -0.21,  0.00), (0.145, 0.42, 0.145)),
+    ("skin/thigh_R",      "hip_R",       (0.00, -0.21,  0.00), (0.145, 0.42, 0.145)),
+    ("skin/shin_L",       "knee_L",      (0.00, -0.21,  0.00), (0.105, 0.42, 0.105)),
+    ("skin/shin_R",       "knee_R",      (0.00, -0.21,  0.00), (0.105, 0.42, 0.105)),
+    ("skin/foot_L",       "foot_L",      (0.00,  0.04,  0.05), (0.085, 0.08, 0.22)),
+    ("skin/foot_R",       "foot_R",      (0.00,  0.04,  0.05), (0.085, 0.08, 0.22)),
+]
+
+# ---------------------------------------------------------------------------
+# Muscles. Children of their crossing joint so they follow the limb.
+# (name, parent_joint, local_translation, scale, group)
+# ---------------------------------------------------------------------------
+
 MUSCLES = [
-    # chest
-    ("pectoralis_major_left",   (-0.11, 1.38, 0.08),  (0.17, 0.11, 0.06), "chest"),
-    ("pectoralis_major_right",  ( 0.11, 1.38, 0.08),  (0.17, 0.11, 0.06), "chest"),
-    # biceps
-    ("biceps_brachii_left_long_head",   (-0.30, 1.30, 0.03), (0.045, 0.14, 0.04), "biceps"),
-    ("biceps_brachii_left_short_head",  (-0.26, 1.30, 0.04), (0.040, 0.13, 0.04), "biceps"),
-    ("biceps_brachii_right_long_head",  ( 0.30, 1.30, 0.03), (0.045, 0.14, 0.04), "biceps"),
-    ("biceps_brachii_right_short_head", ( 0.26, 1.30, 0.04), (0.040, 0.13, 0.04), "biceps"),
-    # triceps
-    ("triceps_brachii_left_long_head",    (-0.28, 1.30, -0.04), (0.040, 0.15, 0.04), "triceps"),
-    ("triceps_brachii_left_lateral_head", (-0.32, 1.32, -0.03), (0.035, 0.13, 0.04), "triceps"),
-    ("triceps_brachii_left_medial_head",  (-0.28, 1.25, -0.04), (0.035, 0.10, 0.03), "triceps"),
-    ("triceps_brachii_right_long_head",    ( 0.28, 1.30, -0.04), (0.040, 0.15, 0.04), "triceps"),
-    ("triceps_brachii_right_lateral_head", ( 0.32, 1.32, -0.03), (0.035, 0.13, 0.04), "triceps"),
-    ("triceps_brachii_right_medial_head",  ( 0.28, 1.25, -0.04), (0.035, 0.10, 0.03), "triceps"),
-    # core
-    ("rectus_abdominis",         ( 0.00, 1.10,  0.10), (0.10, 0.15, 0.04), "core"),
-    ("external_oblique_left",   (-0.11, 1.10,  0.07), (0.05, 0.14, 0.04), "core"),
-    ("external_oblique_right",  ( 0.11, 1.10,  0.07), (0.05, 0.14, 0.04), "core"),
-    ("internal_oblique_left",   (-0.09, 1.03,  0.06), (0.04, 0.08, 0.03), "core"),
-    ("internal_oblique_right",  ( 0.09, 1.03,  0.06), (0.04, 0.08, 0.03), "core"),
-    ("transverse_abdominis",    ( 0.00, 1.05,  0.08), (0.14, 0.08, 0.025), "core"),
-    # glutes
-    ("gluteus_maximus_left",   (-0.09, 0.92, -0.12), (0.09, 0.11, 0.07), "glutes"),
-    ("gluteus_maximus_right",  ( 0.09, 0.92, -0.12), (0.09, 0.11, 0.07), "glutes"),
-    ("gluteus_medius_left",    (-0.12, 1.00, -0.08), (0.05, 0.07, 0.05), "glutes"),
-    ("gluteus_medius_right",   ( 0.12, 1.00, -0.08), (0.05, 0.07, 0.05), "glutes"),
-    # quads
-    ("rectus_femoris_left",      (-0.10, 0.65,  0.07), (0.05, 0.18, 0.04), "quads"),
-    ("rectus_femoris_right",     ( 0.10, 0.65,  0.07), (0.05, 0.18, 0.04), "quads"),
-    ("vastus_lateralis_left",    (-0.14, 0.65,  0.04), (0.04, 0.18, 0.05), "quads"),
-    ("vastus_lateralis_right",   ( 0.14, 0.65,  0.04), (0.04, 0.18, 0.05), "quads"),
-    ("vastus_medialis_left",     (-0.07, 0.55,  0.05), (0.04, 0.11, 0.04), "quads"),
-    ("vastus_medialis_right",    ( 0.07, 0.55,  0.05), (0.04, 0.11, 0.04), "quads"),
-    ("vastus_intermedius_left",  (-0.10, 0.65,  0.05), (0.04, 0.17, 0.03), "quads"),
-    ("vastus_intermedius_right", ( 0.10, 0.65,  0.05), (0.04, 0.17, 0.03), "quads"),
-    # hamstrings
-    ("biceps_femoris_left",   (-0.12, 0.65, -0.07), (0.045, 0.17, 0.04), "hamstrings"),
-    ("biceps_femoris_right",  ( 0.12, 0.65, -0.07), (0.045, 0.17, 0.04), "hamstrings"),
-    ("semitendinosus_left",   (-0.08, 0.65, -0.07), (0.030, 0.17, 0.03), "hamstrings"),
-    ("semitendinosus_right",  ( 0.08, 0.65, -0.07), (0.030, 0.17, 0.03), "hamstrings"),
-    ("semimembranosus_left",  (-0.10, 0.60, -0.08), (0.035, 0.14, 0.03), "hamstrings"),
-    ("semimembranosus_right", ( 0.10, 0.60, -0.08), (0.035, 0.14, 0.03), "hamstrings"),
-    # calves
-    ("gastrocnemius_left",   (-0.10, 0.25, -0.06), (0.045, 0.12, 0.045), "calves"),
-    ("gastrocnemius_right",  ( 0.10, 0.25, -0.06), (0.045, 0.12, 0.045), "calves"),
-    ("soleus_left",          (-0.10, 0.18, -0.05), (0.040, 0.10, 0.040), "calves"),
-    ("soleus_right",         ( 0.10, 0.18, -0.05), (0.040, 0.10, 0.040), "calves"),
-]
+    # chest — front of chest
+    ("pectoralis_major_left",   "spine_upper", (-0.09, 0.13,  0.11), (0.17, 0.12, 0.05), "chest"),
+    ("pectoralis_major_right",  "spine_upper", ( 0.09, 0.13,  0.11), (0.17, 0.12, 0.05), "chest"),
 
-# Semi-transparent "skin" placeholder — body-shaped boxes.
-SKIN_PARTS = [
-    ("torso",            ( 0.00, 1.15,  0.00), (0.22, 0.50, 0.14)),
-    ("head",             ( 0.00, 1.70,  0.03), (0.11, 0.14, 0.11)),
-    ("upper_arm_left",   (-0.28, 1.30,  0.00), (0.055, 0.17, 0.055)),
-    ("upper_arm_right",  ( 0.28, 1.30,  0.00), (0.055, 0.17, 0.055)),
-    ("forearm_left",     (-0.28, 1.00,  0.03), (0.045, 0.15, 0.045)),
-    ("forearm_right",    ( 0.28, 1.00,  0.03), (0.045, 0.15, 0.045)),
-    ("hand_left",        (-0.28, 0.80,  0.03), (0.040, 0.08, 0.030)),
-    ("hand_right",       ( 0.28, 0.80,  0.03), (0.040, 0.08, 0.030)),
-    ("upper_leg_left",   (-0.11, 0.63,  0.00), (0.08, 0.22, 0.09)),
-    ("upper_leg_right",  ( 0.11, 0.63,  0.00), (0.08, 0.22, 0.09)),
-    ("lower_leg_left",   (-0.11, 0.22,  0.00), (0.065, 0.18, 0.07)),
-    ("lower_leg_right",  ( 0.11, 0.22,  0.00), (0.065, 0.18, 0.07)),
-    ("foot_left",        (-0.11, 0.03,  0.05), (0.055, 0.03, 0.11)),
-    ("foot_right",       ( 0.11, 0.03,  0.05), (0.055, 0.03, 0.11)),
-]
+    # biceps — front of upper arm
+    ("biceps_brachii_left_long_head",   "shoulder_L", ( 0.015, -0.14, 0.055), (0.040, 0.14, 0.040), "biceps"),
+    ("biceps_brachii_left_short_head",  "shoulder_L", (-0.015, -0.14, 0.055), (0.035, 0.13, 0.040), "biceps"),
+    ("biceps_brachii_right_long_head",  "shoulder_R", (-0.015, -0.14, 0.055), (0.040, 0.14, 0.040), "biceps"),
+    ("biceps_brachii_right_short_head", "shoulder_R", ( 0.015, -0.14, 0.055), (0.035, 0.13, 0.040), "biceps"),
 
-# Simple skeleton placeholder — single vertical rod. Marker only.
-SKELETON_PARTS = [
-    ("spine", (0.00, 1.00, -0.02), (0.015, 0.70, 0.015)),
-]
+    # triceps — back of upper arm
+    ("triceps_brachii_left_long_head",    "shoulder_L", ( 0.00, -0.14, -0.055), (0.040, 0.15, 0.040), "triceps"),
+    ("triceps_brachii_left_lateral_head", "shoulder_L", (-0.03, -0.12, -0.045), (0.035, 0.12, 0.040), "triceps"),
+    ("triceps_brachii_left_medial_head",  "shoulder_L", ( 0.03, -0.18, -0.045), (0.030, 0.10, 0.035), "triceps"),
+    ("triceps_brachii_right_long_head",    "shoulder_R", ( 0.00, -0.14, -0.055), (0.040, 0.15, 0.040), "triceps"),
+    ("triceps_brachii_right_lateral_head", "shoulder_R", ( 0.03, -0.12, -0.045), (0.035, 0.12, 0.040), "triceps"),
+    ("triceps_brachii_right_medial_head",  "shoulder_R", (-0.03, -0.18, -0.045), (0.030, 0.10, 0.035), "triceps"),
 
+    # core — front of waist/pelvis
+    ("rectus_abdominis",       "spine_mid", ( 0.00,  0.03, 0.10), (0.12, 0.17, 0.03), "core"),
+    ("external_oblique_left",  "spine_mid", (-0.11,  0.03, 0.08), (0.06, 0.15, 0.04), "core"),
+    ("external_oblique_right", "spine_mid", ( 0.11,  0.03, 0.08), (0.06, 0.15, 0.04), "core"),
+    ("internal_oblique_left",  "spine_mid", (-0.09, -0.03, 0.07), (0.05, 0.08, 0.03), "core"),
+    ("internal_oblique_right", "spine_mid", ( 0.09, -0.03, 0.07), (0.05, 0.08, 0.03), "core"),
+    ("transverse_abdominis",   "spine_mid", ( 0.00,  0.00, 0.09), (0.17, 0.09, 0.025), "core"),
+
+    # glutes — back of pelvis
+    ("gluteus_maximus_left",  "pelvis", (-0.09, -0.01, -0.11), (0.12, 0.14, 0.07), "glutes"),
+    ("gluteus_maximus_right", "pelvis", ( 0.09, -0.01, -0.11), (0.12, 0.14, 0.07), "glutes"),
+    ("gluteus_medius_left",   "pelvis", (-0.13,  0.04, -0.06), (0.06, 0.08, 0.05), "glutes"),
+    ("gluteus_medius_right",  "pelvis", ( 0.13,  0.04, -0.06), (0.06, 0.08, 0.05), "glutes"),
+
+    # quads — front of thigh
+    ("rectus_femoris_left",      "hip_L", ( 0.00, -0.18, 0.08), (0.055, 0.22, 0.045), "quads"),
+    ("rectus_femoris_right",     "hip_R", ( 0.00, -0.18, 0.08), (0.055, 0.22, 0.045), "quads"),
+    ("vastus_lateralis_left",    "hip_L", (-0.06, -0.18, 0.05), (0.045, 0.22, 0.055), "quads"),
+    ("vastus_lateralis_right",   "hip_R", ( 0.06, -0.18, 0.05), (0.045, 0.22, 0.055), "quads"),
+    ("vastus_medialis_left",     "hip_L", ( 0.04, -0.30, 0.06), (0.045, 0.12, 0.045), "quads"),
+    ("vastus_medialis_right",    "hip_R", (-0.04, -0.30, 0.06), (0.045, 0.12, 0.045), "quads"),
+    ("vastus_intermedius_left",  "hip_L", ( 0.00, -0.18, 0.05), (0.045, 0.18, 0.03),  "quads"),
+    ("vastus_intermedius_right", "hip_R", ( 0.00, -0.18, 0.05), (0.045, 0.18, 0.03),  "quads"),
+
+    # hamstrings — back of thigh
+    ("biceps_femoris_left",   "hip_L", (-0.04, -0.22, -0.08), (0.050, 0.20, 0.045), "hamstrings"),
+    ("biceps_femoris_right",  "hip_R", ( 0.04, -0.22, -0.08), (0.050, 0.20, 0.045), "hamstrings"),
+    ("semitendinosus_left",   "hip_L", ( 0.02, -0.22, -0.08), (0.035, 0.20, 0.035), "hamstrings"),
+    ("semitendinosus_right",  "hip_R", (-0.02, -0.22, -0.08), (0.035, 0.20, 0.035), "hamstrings"),
+    ("semimembranosus_left",  "hip_L", (-0.02, -0.28, -0.09), (0.040, 0.14, 0.035), "hamstrings"),
+    ("semimembranosus_right", "hip_R", ( 0.02, -0.28, -0.09), (0.040, 0.14, 0.035), "hamstrings"),
+
+    # calves — back of shin
+    ("gastrocnemius_left",  "knee_L", ( 0.00, -0.13, -0.06), (0.070, 0.14, 0.050), "calves"),
+    ("gastrocnemius_right", "knee_R", ( 0.00, -0.13, -0.06), (0.070, 0.14, 0.050), "calves"),
+    ("soleus_left",         "knee_L", ( 0.00, -0.28, -0.05), (0.055, 0.12, 0.045), "calves"),
+    ("soleus_right",        "knee_R", ( 0.00, -0.28, -0.05), (0.055, 0.12, 0.045), "calves"),
+]
 
 # ---------------------------------------------------------------------------
-# Box primitive — 24 verts (4 per face so normals are flat), 36 indices.
+# Cylinder primitive. 1x1x1 cylinder centered at origin, axis = Y.
 # ---------------------------------------------------------------------------
 
-def box_geometry():
-    # Half-extents are 0.5 so the box is 1x1x1; node scale sizes it.
-    h = 0.5
-    faces = [
-        # (normal, 4 corner positions ccw)
-        ((0, 0,  1), [(-h, -h,  h), ( h, -h,  h), ( h,  h,  h), (-h,  h,  h)]),  # +Z
-        ((0, 0, -1), [( h, -h, -h), (-h, -h, -h), (-h,  h, -h), ( h,  h, -h)]),  # -Z
-        ((1, 0, 0),  [( h, -h,  h), ( h, -h, -h), ( h,  h, -h), ( h,  h,  h)]),  # +X
-        ((-1, 0, 0), [(-h, -h, -h), (-h, -h,  h), (-h,  h,  h), (-h,  h, -h)]),  # -X
-        ((0, 1, 0),  [(-h,  h,  h), ( h,  h,  h), ( h,  h, -h), (-h,  h, -h)]),  # +Y
-        ((0, -1, 0), [(-h, -h, -h), ( h, -h, -h), ( h, -h,  h), (-h, -h,  h)]),  # -Y
-    ]
+def cylinder_geometry(radial_segments=14):
     positions = []
     normals = []
     indices = []
-    i = 0
-    for n, corners in faces:
-        for c in corners:
-            positions.extend(c)
-            normals.extend(n)
-        indices.extend([i, i + 1, i + 2, i, i + 2, i + 3])
-        i += 4
+
+    # Side vertices: two rings (top + bottom), each with per-vertex outward normals.
+    for ring_y in (0.5, -0.5):
+        for i in range(radial_segments):
+            theta = 2 * math.pi * i / radial_segments
+            x = 0.5 * math.cos(theta)
+            z = 0.5 * math.sin(theta)
+            positions.extend([x, ring_y, z])
+            normals.extend([math.cos(theta), 0, math.sin(theta)])
+
+    # Side triangles
+    for i in range(radial_segments):
+        a = i
+        b = (i + 1) % radial_segments
+        c = i + radial_segments
+        d = ((i + 1) % radial_segments) + radial_segments
+        indices.extend([a, c, b, b, c, d])
+
+    # Top cap: center + ring (with up-pointing normals)
+    top_center = len(positions) // 3
+    positions.extend([0, 0.5, 0]); normals.extend([0, 1, 0])
+    top_ring_start = len(positions) // 3
+    for i in range(radial_segments):
+        theta = 2 * math.pi * i / radial_segments
+        positions.extend([0.5 * math.cos(theta), 0.5, 0.5 * math.sin(theta)])
+        normals.extend([0, 1, 0])
+    for i in range(radial_segments):
+        indices.extend([top_center, top_ring_start + i, top_ring_start + ((i + 1) % radial_segments)])
+
+    # Bottom cap: center + ring (down-pointing normals)
+    bot_center = len(positions) // 3
+    positions.extend([0, -0.5, 0]); normals.extend([0, -1, 0])
+    bot_ring_start = len(positions) // 3
+    for i in range(radial_segments):
+        theta = 2 * math.pi * i / radial_segments
+        positions.extend([0.5 * math.cos(theta), -0.5, 0.5 * math.sin(theta)])
+        normals.extend([0, -1, 0])
+    for i in range(radial_segments):
+        indices.extend([bot_center, bot_ring_start + ((i + 1) % radial_segments), bot_ring_start + i])
+
     return positions, normals, indices
 
 
 # ---------------------------------------------------------------------------
-# Animation keyframes — four exercise clips. These animate the root node only
-# (position + rotation) so the figure moves in a lift-like pattern. Muscle-
-# level activation is driven by muscles_activation.json in the demo, not by
-# glb animation channels.
+# Quaternion helpers
 # ---------------------------------------------------------------------------
 
-def rep_pattern(duration, rep_count, amp_y, lean_x_deg=0.0):
-    """Keyframes for a rep: start at 0, bottom at mid, back to 0."""
-    times = []
-    translations = []  # [x,y,z] per key
-    rotations = []     # quaternion [x,y,z,w] per key
-    per_rep = duration / rep_count
-    lean_rad = math.radians(lean_x_deg)
-    for r in range(rep_count):
-        t0 = r * per_rep
-        t_mid = t0 + per_rep / 2.0
-        times.append(t0)
-        translations.append((0.0, 0.0, 0.0))
-        rotations.append(quat_from_x(0.0))
-        times.append(t_mid)
-        translations.append((0.0, -amp_y, 0.0))
-        rotations.append(quat_from_x(lean_rad))
-    # final rest keyframe
-    times.append(duration)
-    translations.append((0.0, 0.0, 0.0))
-    rotations.append(quat_from_x(0.0))
-    return times, translations, rotations
+def quat_axis(axis, angle):
+    half = angle / 2.0
+    s = math.sin(half); c = math.cos(half)
+    return {
+        "X": (s, 0, 0, c),
+        "Y": (0, s, 0, c),
+        "Z": (0, 0, s, c),
+    }[axis]
 
 
-def quat_from_x(angle_rad):
-    s = math.sin(angle_rad / 2.0)
-    c = math.cos(angle_rad / 2.0)
-    return (s, 0.0, 0.0, c)
+IDENTITY_Q = (0.0, 0.0, 0.0, 1.0)
 
 
-ANIMATIONS = {
-    # name: (duration, reps, y_amplitude, forward_lean_deg)
-    "bench_press": (24.0, 8, 0.00, 0.0),   # subtle — placeholder root doesn't move much
-    "bicep_curl":  (16.0, 8, 0.00, 0.0),   # subtle
-    "squat":       (18.0, 6, 0.30, 0.0),   # deep knee bend represented as root drop
-    "deadlift":    (18.0, 6, 0.20, 25.0),  # root drop + forward lean
+# ---------------------------------------------------------------------------
+# ★ Exercise animations
+#
+# Each builder returns a list of channel dicts:
+#   { "node": joint_name,
+#     "path": "rotation" | "translation",
+#     "keys": [(t_seconds, value_tuple), ...]  }
+#
+# All curves are keyed at a few phases per rep and interpolated linearly.
+# Rest poses omitted (joints at identity in the base glb).
+# ---------------------------------------------------------------------------
+
+def rep_phase_times(duration, reps, phase_count=5):
+    """Yield (rep_index, phase_fraction, t_seconds) for the given rep layout.
+       phase_fraction runs through evenly-spaced points in [0, 1]."""
+    per_rep = duration / reps
+    for r in range(reps):
+        for p in range(phase_count):
+            frac = p / (phase_count - 1)
+            t = r * per_rep + frac * per_rep
+            yield r, frac, t
+
+
+def pose_curve(joint_fn, duration, reps, phase_count=5):
+    """Collects (time, value) keys by calling joint_fn(phase) → dict{joint: (axis, angle)|('T', vec3)}
+       and returns per-joint channel lists."""
+    channels = {}  # (joint, path) -> [(t, value)]
+    for _, frac, t in rep_phase_times(duration, reps, phase_count):
+        pose = joint_fn(frac)
+        for joint, spec in pose.items():
+            if spec[0] in ("X", "Y", "Z"):
+                axis, angle = spec
+                key = (joint, "rotation")
+                channels.setdefault(key, []).append((t, quat_axis(axis, angle)))
+            elif spec[0] == "T":
+                _, vec = spec
+                key = (joint, "translation")
+                channels.setdefault(key, []).append((t, tuple(vec)))
+    # Make sure a key exists at t=0 and t=duration so the clip wraps cleanly
+    # (pose_fn should already cover both if phase 0 and 1 are included).
+    return channels
+
+
+def bench_press_pose(phase):
+    """Pretend bench press — standing, arms forward at shoulder height, elbows
+       flex to bring hands toward chest at the bottom, extend at the top.
+       phase 0 = fully extended (top of press), phase 0.5 = hands at chest."""
+    # Shoulders raised forward 90° stays constant through the lift.
+    # Elbow flex: 0° at top, 90° at bottom, back to 0°. sin(pi*phase) shape.
+    elbow_flex = math.radians(85) * math.sin(math.pi * phase)
+    return {
+        "shoulder_L": ("X", math.radians(-90)),  # arms forward
+        "shoulder_R": ("X", math.radians(-90)),
+        "elbow_L":    ("X", -elbow_flex),         # flex toward chest
+        "elbow_R":    ("X", -elbow_flex),
+    }
+
+
+def bicep_curl_pose(phase):
+    """Arms at sides, elbows flex 0° (hands down) → ~130° (hands near shoulders) → 0°."""
+    flex = math.radians(130) * math.sin(math.pi * phase)
+    return {
+        "shoulder_L": ("X", 0.0),   # keep arms down
+        "shoulder_R": ("X", 0.0),
+        "elbow_L":    ("X", -flex),
+        "elbow_R":    ("X", -flex),
+    }
+
+
+def squat_pose(phase):
+    """Hip + knee flex together, ankle dorsiflexes slightly. Root dips so the
+       feet don't lift off the ground as the knees bend."""
+    hip  = math.radians(85) * math.sin(math.pi * phase)
+    knee = math.radians(100) * math.sin(math.pi * phase)
+    ank  = math.radians(25) * math.sin(math.pi * phase)
+    dip_y = -0.42 * math.sin(math.pi * phase)
+    return {
+        "root":     ("T", (0.0, dip_y, 0.0)),
+        "hip_L":    ("X", hip),
+        "hip_R":    ("X", hip),
+        "knee_L":   ("X", -knee),
+        "knee_R":   ("X", -knee),
+        "ankle_L":  ("X", -ank),
+        "ankle_R":  ("X", -ank),
+        # Slight forward chest lean to keep the center of mass over feet
+        "spine_mid":   ("X", math.radians(20) * math.sin(math.pi * phase)),
+        "spine_upper": ("X", math.radians(10) * math.sin(math.pi * phase)),
+    }
+
+
+def deadlift_pose(phase):
+    """Hip hinge — large hip flex, modest knee flex, torso bows forward. Root
+       drops a touch so hands sweep down to shin level."""
+    hip  = math.radians(90) * math.sin(math.pi * phase)
+    knee = math.radians(35) * math.sin(math.pi * phase)
+    torso = math.radians(60) * math.sin(math.pi * phase)
+    dip_y = -0.18 * math.sin(math.pi * phase)
+    # Shoulders rotate forward slightly as arms hang straight down
+    shoulder = math.radians(5) * math.sin(math.pi * phase)
+    return {
+        "root":         ("T", (0.0, dip_y, 0.0)),
+        "hip_L":        ("X", hip),
+        "hip_R":        ("X", hip),
+        "knee_L":       ("X", -knee),
+        "knee_R":       ("X", -knee),
+        "spine_mid":    ("X", torso * 0.5),
+        "spine_upper":  ("X", torso * 0.5),
+        "shoulder_L":   ("X", shoulder),
+        "shoulder_R":   ("X", shoulder),
+    }
+
+
+EXERCISES = {
+    # name: (duration_s, reps, pose_fn)
+    "bench_press": (24.0, 8, bench_press_pose),
+    "bicep_curl":  (16.0, 8, bicep_curl_pose),
+    "squat":       (18.0, 6, squat_pose),
+    "deadlift":    (18.0, 6, deadlift_pose),
 }
 
 
@@ -176,212 +346,167 @@ ANIMATIONS = {
 # Binary packing — glTF 2.0 .glb
 # ---------------------------------------------------------------------------
 
-def pack_floats(values):
-    return struct.pack("<%df" % len(values), *values)
-
-
-def pack_ushorts(values):
-    return struct.pack("<%dH" % len(values), *values)
+def pack_floats(values):  return struct.pack("<%df" % len(values), *values)
+def pack_ushorts(values): return struct.pack("<%dH" % len(values), *values)
 
 
 def align4(buf, pad_byte=b"\x00"):
     r = len(buf) % 4
-    if r:
-        buf += pad_byte * (4 - r)
+    if r: buf += pad_byte * (4 - r)
     return buf
 
 
 def build_glb():
-    positions, normals, indices = box_geometry()
+    positions, normals, indices = cylinder_geometry(radial_segments=14)
 
     bin_data = bytearray()
+    buffer_views = []
+    accessors = []
 
     def add_view(data_bytes, target=None):
         offset = len(bin_data)
         bin_data.extend(data_bytes)
-        # pad bufferView to 4-byte boundary
-        while len(bin_data) % 4:
-            bin_data.append(0)
-        view = {"buffer": 0, "byteOffset": offset, "byteLength": len(data_bytes)}
-        if target is not None:
-            view["target"] = target
-        return view
+        while len(bin_data) % 4: bin_data.append(0)
+        v = {"buffer": 0, "byteOffset": offset, "byteLength": len(data_bytes)}
+        if target is not None: v["target"] = target
+        return v
 
-    buffer_views = []
-    accessors = []
-
-    # mesh data
-    pos_view = add_view(pack_floats(positions), target=34962)  # ARRAY_BUFFER
-    buffer_views.append(pos_view)
+    # Shared geometry accessors
+    buffer_views.append(add_view(pack_floats(positions), target=34962))
     pos_min = [min(positions[i::3]) for i in range(3)]
     pos_max = [max(positions[i::3]) for i in range(3)]
-    accessors.append({
-        "bufferView": len(buffer_views) - 1,
-        "componentType": 5126,  # FLOAT
-        "count": len(positions) // 3,
-        "type": "VEC3",
-        "min": pos_min,
-        "max": pos_max,
-    })
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                      "count": len(positions) // 3, "type": "VEC3",
+                      "min": pos_min, "max": pos_max})
     pos_accessor = len(accessors) - 1
 
-    nrm_view = add_view(pack_floats(normals), target=34962)
-    buffer_views.append(nrm_view)
-    accessors.append({
-        "bufferView": len(buffer_views) - 1,
-        "componentType": 5126,
-        "count": len(normals) // 3,
-        "type": "VEC3",
-    })
+    buffer_views.append(add_view(pack_floats(normals), target=34962))
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                      "count": len(normals) // 3, "type": "VEC3"})
     nrm_accessor = len(accessors) - 1
 
-    idx_view = add_view(pack_ushorts(indices), target=34963)  # ELEMENT_ARRAY_BUFFER
-    buffer_views.append(idx_view)
-    accessors.append({
-        "bufferView": len(buffer_views) - 1,
-        "componentType": 5123,  # UNSIGNED_SHORT
-        "count": len(indices),
-        "type": "SCALAR",
-    })
+    buffer_views.append(add_view(pack_ushorts(indices), target=34963))
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5123,
+                      "count": len(indices), "type": "SCALAR"})
     idx_accessor = len(accessors) - 1
 
-    # materials
+    # Materials
     materials = [
-        {  # 0: skin (translucent grey)
-            "name": "skin_placeholder",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.90, 0.78, 0.72, 0.22],
-                "metallicFactor": 0.0,
-                "roughnessFactor": 0.9,
-            },
-            "alphaMode": "BLEND",
-            "doubleSided": True,
-        },
-        {  # 1: muscle default
-            "name": "muscle_default",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.78, 0.18, 0.18, 1.0],
-                "metallicFactor": 0.0,
-                "roughnessFactor": 0.6,
-            },
-        },
-        {  # 2: skeleton
-            "name": "skeleton_placeholder",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.95, 0.95, 0.90, 1.0],
-                "metallicFactor": 0.1,
-                "roughnessFactor": 0.4,
-            },
-        },
+        {"name": "skin_placeholder",
+         "pbrMetallicRoughness": {"baseColorFactor": [0.90, 0.78, 0.72, 0.22],
+                                   "metallicFactor": 0.0, "roughnessFactor": 0.9},
+         "alphaMode": "BLEND", "doubleSided": True},
+        {"name": "muscle_default",
+         "pbrMetallicRoughness": {"baseColorFactor": [0.78, 0.18, 0.18, 1.0],
+                                   "metallicFactor": 0.0, "roughnessFactor": 0.6}},
     ]
+    MAT_SKIN, MAT_MUSCLE = 0, 1
 
-    # three meshes = same primitive, different material binding
-    meshes = []
-    for mat_idx in [0, 1, 2]:
-        meshes.append({
-            "name": ["mesh_skin", "mesh_muscle", "mesh_skeleton"][mat_idx],
-            "primitives": [{
-                "attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
-                "indices": idx_accessor,
-                "material": mat_idx,
-                "mode": 4,  # TRIANGLES
-            }],
-        })
-    MESH_SKIN, MESH_MUSCLE, MESH_SKELETON = 0, 1, 2
+    # Shared meshes — one per material. Every limb/muscle node references these
+    # by index, so geometry data is stored once.
+    meshes = [
+        {"name": "mesh_skin",
+         "primitives": [{"attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
+                         "indices": idx_accessor, "material": MAT_SKIN, "mode": 4}]},
+        {"name": "mesh_muscle",
+         "primitives": [{"attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
+                         "indices": idx_accessor, "material": MAT_MUSCLE, "mode": 4}]},
+    ]
+    MESH_SKIN, MESH_MUSCLE = 0, 1
 
-    # ---- nodes ----------------------------------------------------------
+    # --- Node graph (joints + their mesh children) ---
     nodes = []
+    joint_indices = {}
 
-    def add_node(name, children=None, mesh=None, translation=None, scale=None, rotation=None):
-        node = {"name": name}
-        if children:
-            node["children"] = children
-        if mesh is not None:
-            node["mesh"] = mesh
-        if translation is not None:
-            node["translation"] = list(translation)
-        if scale is not None:
-            node["scale"] = list(scale)
-        if rotation is not None:
-            node["rotation"] = list(rotation)
-        nodes.append(node)
+    def add_node(**kwargs):
+        nodes.append(kwargs)
         return len(nodes) - 1
 
-    # Build leaf nodes first, group containers last.
-    skin_leaf_ids = [add_node(f"skin/{name}", mesh=MESH_SKIN, translation=t, scale=s) for name, t, s in SKIN_PARTS]
-    skeleton_leaf_ids = [add_node(f"skeleton/{name}", mesh=MESH_SKELETON, translation=t, scale=s) for name, t, s in SKELETON_PARTS]
-    muscle_leaf_ids = [add_node(f"muscles/{name}", mesh=MESH_MUSCLE, translation=t, scale=s) for name, t, s, _ in MUSCLES]
+    # Create joints first (empty nodes), parented by iterating the JOINTS list.
+    # Each joint's translation is its offset from its parent.
+    parent_children = {}
+    for name, parent, translation in JOINTS:
+        node_idx = add_node(name=name, translation=list(translation))
+        joint_indices[name] = node_idx
+        if parent is not None:
+            parent_children.setdefault(parent, []).append(node_idx)
 
-    # Group containers
-    human_skin_id = add_node("human/skin", children=skin_leaf_ids)
-    human_skeleton_id = add_node("human/skeleton", children=skeleton_leaf_ids)
-    muscles_root_id = add_node("muscles", children=muscle_leaf_ids)
-    human_root_id = add_node("human", children=[human_skin_id, human_skeleton_id])
-    scene_root_id = add_node("root", children=[human_root_id, muscles_root_id], translation=(0.0, 0.0, 0.0), rotation=quat_from_x(0.0))
+    # Attach limb (skin) meshes as children of their parent joint
+    for name, parent, translation, scale in SKIN_LIMBS:
+        node_idx = add_node(name=name, mesh=MESH_SKIN,
+                            translation=list(translation), scale=list(scale))
+        parent_children.setdefault(parent, []).append(node_idx)
 
-    # ---- animations -----------------------------------------------------
+    # Attach muscle meshes as children of their parent joint
+    muscle_leaf_names = []
+    for name, parent, translation, scale, _group in MUSCLES:
+        node_idx = add_node(name=f"muscles/{name}", mesh=MESH_MUSCLE,
+                            translation=list(translation), scale=list(scale))
+        parent_children.setdefault(parent, []).append(node_idx)
+        muscle_leaf_names.append(f"muscles/{name}")
+
+    # Wire children arrays onto each joint node now that we've collected them
+    for parent_name, child_list in parent_children.items():
+        parent_idx = joint_indices.get(parent_name)
+        if parent_idx is None:
+            # Shouldn't happen; every parent in JOINTS/SKIN_LIMBS/MUSCLES is a joint
+            raise RuntimeError(f"Unknown parent joint: {parent_name!r}")
+        nodes[parent_idx].setdefault("children", []).extend(child_list)
+
+    scene_root = joint_indices["root"]
+
+    # --- Animations ---
     animations = []
-    for anim_name, (duration, reps, amp_y, lean) in ANIMATIONS.items():
-        times, translations, rotations = rep_pattern(duration, reps, amp_y, lean)
+    for anim_name, (duration, reps, pose_fn) in EXERCISES.items():
+        anim_channels = []
+        anim_samplers = []
+        channels = pose_curve(pose_fn, duration, reps)
 
-        # time accessor
-        t_bytes = pack_floats(times)
-        t_view = add_view(t_bytes)
-        buffer_views.append(t_view)
-        accessors.append({
-            "bufferView": len(buffer_views) - 1,
-            "componentType": 5126,
-            "count": len(times),
-            "type": "SCALAR",
-            "min": [min(times)],
-            "max": [max(times)],
-        })
-        t_accessor = len(accessors) - 1
+        for (joint_name, path), keys in channels.items():
+            joint_idx = joint_indices.get(joint_name)
+            if joint_idx is None:
+                continue
 
-        # translation accessor
-        tr_flat = [c for v in translations for c in v]
-        tr_view = add_view(pack_floats(tr_flat))
-        buffer_views.append(tr_view)
-        accessors.append({
-            "bufferView": len(buffer_views) - 1,
-            "componentType": 5126,
-            "count": len(translations),
-            "type": "VEC3",
-        })
-        tr_accessor = len(accessors) - 1
+            # Dedup keys with the same time (shouldn't happen with phase sampler but safe)
+            keys = sorted(keys, key=lambda k: k[0])
 
-        # rotation accessor
-        rt_flat = [c for q in rotations for c in q]
-        rt_view = add_view(pack_floats(rt_flat))
-        buffer_views.append(rt_view)
-        accessors.append({
-            "bufferView": len(buffer_views) - 1,
-            "componentType": 5126,
-            "count": len(rotations),
-            "type": "VEC4",
-        })
-        rt_accessor = len(accessors) - 1
+            times = [k[0] for k in keys]
+            values = [k[1] for k in keys]
+            buffer_views.append(add_view(pack_floats(times)))
+            accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                              "count": len(times), "type": "SCALAR",
+                              "min": [min(times)], "max": [max(times)]})
+            t_accessor = len(accessors) - 1
 
-        animations.append({
-            "name": anim_name,
-            "channels": [
-                {"sampler": 0, "target": {"node": scene_root_id, "path": "translation"}},
-                {"sampler": 1, "target": {"node": scene_root_id, "path": "rotation"}},
-            ],
-            "samplers": [
-                {"input": t_accessor, "interpolation": "LINEAR", "output": tr_accessor},
-                {"input": t_accessor, "interpolation": "LINEAR", "output": rt_accessor},
-            ],
-        })
+            if path == "rotation":
+                flat = [c for v in values for c in v]
+                buffer_views.append(add_view(pack_floats(flat)))
+                accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                                  "count": len(values), "type": "VEC4"})
+                v_accessor = len(accessors) - 1
+            else:  # translation
+                flat = [c for v in values for c in v]
+                buffer_views.append(add_view(pack_floats(flat)))
+                accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                                  "count": len(values), "type": "VEC3"})
+                v_accessor = len(accessors) - 1
 
-    # ---- assemble JSON -------------------------------------------------
+            sampler_idx = len(anim_samplers)
+            anim_samplers.append({"input": t_accessor,
+                                   "interpolation": "LINEAR",
+                                   "output": v_accessor})
+            anim_channels.append({"sampler": sampler_idx,
+                                   "target": {"node": joint_idx, "path": path}})
+
+        animations.append({"name": anim_name,
+                            "channels": anim_channels,
+                            "samplers": anim_samplers})
+
     gltf = {
-        "asset": {
-            "version": "2.0",
-            "generator": "gym-anatomy-viewer placeholder builder (not anatomically accurate)",
-        },
+        "asset": {"version": "2.0",
+                   "generator": "gym-anatomy-viewer rigged humanoid placeholder (NOT anatomically accurate)"},
         "scene": 0,
-        "scenes": [{"name": "scene", "nodes": [scene_root_id]}],
+        "scenes": [{"name": "scene", "nodes": [scene_root]}],
         "nodes": nodes,
         "meshes": meshes,
         "materials": materials,
@@ -402,7 +527,10 @@ def build_glb():
 
     OUT_PATH.write_bytes(header + json_chunk + bin_chunk)
     print(f"wrote {OUT_PATH}  ({OUT_PATH.stat().st_size} bytes)")
-    print(f"  nodes: {len(nodes)}   muscles: {len(muscle_leaf_ids)}   animations: {len(animations)}")
+    print(f"  joints: {len(JOINTS)}   skin: {len(SKIN_LIMBS)}   muscles: {len(MUSCLES)}")
+    print(f"  animations: {len(animations)}")
+    for a in animations:
+        print(f"    {a['name']}: {len(a['channels'])} channels, {len(a['samplers'])} samplers")
 
 
 if __name__ == "__main__":

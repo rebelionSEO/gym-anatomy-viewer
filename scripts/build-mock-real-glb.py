@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
 build-mock-real-glb.py
-Generates sample_real_anatomy.glb at repo root — a *mock* "real anatomy"
-file for exercising the demo's morph-target code path. Geometry is still
-primitive boxes (so this is NOT anatomically accurate either), but each
-muscle mesh exposes a morph target named contract_{muscle_name}_01 whose
-delta inflates the mesh by ~15% when fully active. The demo's activation
-driver picks up the morph targets automatically; the color-tint fallback
-is not used for muscles mapped to this file.
+Generates sample_real_anatomy.glb — the rigged humanoid placeholder with
+PER-MUSCLE MORPH TARGETS (contract_{muscle_name}_01) so the demo's morph
+target code path lights up.
 
-Mirrors build-placeholder-glb.py in structure. Duplication is intentional
-to keep each script short and readable.
+Same joint hierarchy, skin, and animations as build-placeholder-glb.py.
+Muscles each get their own glTF mesh entry so each can own a unique
+targetNames array; morph POSITION deltas are shared (all muscles inflate
+~15% at full influence).
+
+Still NOT anatomically accurate. Cylinders, not muscle bellies.
 """
 
 import json
@@ -20,114 +20,210 @@ from pathlib import Path
 
 OUT_PATH = Path(__file__).resolve().parent.parent / "sample_real_anatomy.glb"
 
+MORPH_INFLATION = 0.15  # delta = base * 0.15 → 15% uniform inflation at full influence
 
-# Reuse the same canonical muscle list and placements as the placeholder.
+# ---------------------------------------------------------------------------
+# Shared layout (keep in sync with build-placeholder-glb.py)
+# ---------------------------------------------------------------------------
+
+JOINTS = [
+    ("root",         None,          (0.00,  0.00,  0.00)),
+    ("pelvis",       "root",        (0.00,  0.95,  0.00)),
+    ("spine_mid",    "pelvis",      (0.00,  0.09,  0.00)),
+    ("spine_upper",  "spine_mid",   (0.00,  0.15,  0.00)),
+    ("neck",         "spine_upper", (0.00,  0.19,  0.00)),
+    ("head",         "neck",        (0.00,  0.09,  0.00)),
+    ("shoulder_L",   "spine_upper", (-0.18, 0.17,  0.00)),
+    ("elbow_L",      "shoulder_L",  (0.00, -0.28,  0.00)),
+    ("wrist_L",      "elbow_L",     (0.00, -0.26,  0.00)),
+    ("hand_L",       "wrist_L",     (0.00, -0.09,  0.00)),
+    ("shoulder_R",   "spine_upper", ( 0.18, 0.17,  0.00)),
+    ("elbow_R",      "shoulder_R",  (0.00, -0.28,  0.00)),
+    ("wrist_R",      "elbow_R",     (0.00, -0.26,  0.00)),
+    ("hand_R",       "wrist_R",     (0.00, -0.09,  0.00)),
+    ("hip_L",        "pelvis",      (-0.10, -0.04, 0.00)),
+    ("knee_L",       "hip_L",       (0.00, -0.42,  0.00)),
+    ("ankle_L",      "knee_L",      (0.00, -0.42,  0.00)),
+    ("foot_L",       "ankle_L",     (0.00, -0.04, 0.08)),
+    ("hip_R",        "pelvis",      ( 0.10, -0.04, 0.00)),
+    ("knee_R",       "hip_R",       (0.00, -0.42,  0.00)),
+    ("ankle_R",      "knee_R",      (0.00, -0.42,  0.00)),
+    ("foot_R",       "ankle_R",     (0.00, -0.04, 0.08)),
+]
+
+SKIN_LIMBS = [
+    ("skin/head",         "head",        (0.00,  0.08,  0.02), (0.15, 0.22, 0.17)),
+    ("skin/neck",         "neck",        (0.00,  0.04,  0.00), (0.08, 0.09, 0.08)),
+    ("skin/chest",        "spine_upper", (0.00,  0.08,  0.00), (0.34, 0.26, 0.21)),
+    ("skin/waist",        "spine_mid",   (0.00,  0.07,  0.00), (0.26, 0.18, 0.18)),
+    ("skin/pelvis_core",  "pelvis",      (0.00,  0.00,  0.00), (0.30, 0.14, 0.19)),
+    ("skin/upperarm_L",   "shoulder_L",  (0.00, -0.14,  0.00), (0.095, 0.28, 0.095)),
+    ("skin/upperarm_R",   "shoulder_R",  (0.00, -0.14,  0.00), (0.095, 0.28, 0.095)),
+    ("skin/forearm_L",    "elbow_L",     (0.00, -0.13,  0.00), (0.078, 0.26, 0.078)),
+    ("skin/forearm_R",    "elbow_R",     (0.00, -0.13,  0.00), (0.078, 0.26, 0.078)),
+    ("skin/hand_L",       "wrist_L",     (0.00, -0.09,  0.00), (0.075, 0.18, 0.045)),
+    ("skin/hand_R",       "wrist_R",     (0.00, -0.09,  0.00), (0.075, 0.18, 0.045)),
+    ("skin/thigh_L",      "hip_L",       (0.00, -0.21,  0.00), (0.145, 0.42, 0.145)),
+    ("skin/thigh_R",      "hip_R",       (0.00, -0.21,  0.00), (0.145, 0.42, 0.145)),
+    ("skin/shin_L",       "knee_L",      (0.00, -0.21,  0.00), (0.105, 0.42, 0.105)),
+    ("skin/shin_R",       "knee_R",      (0.00, -0.21,  0.00), (0.105, 0.42, 0.105)),
+    ("skin/foot_L",       "foot_L",      (0.00,  0.04,  0.05), (0.085, 0.08, 0.22)),
+    ("skin/foot_R",       "foot_R",      (0.00,  0.04,  0.05), (0.085, 0.08, 0.22)),
+]
+
 MUSCLES = [
-    ("pectoralis_major_left",   (-0.11, 1.38, 0.08),  (0.17, 0.11, 0.06), "chest"),
-    ("pectoralis_major_right",  ( 0.11, 1.38, 0.08),  (0.17, 0.11, 0.06), "chest"),
-    ("biceps_brachii_left_long_head",   (-0.30, 1.30, 0.03), (0.045, 0.14, 0.04), "biceps"),
-    ("biceps_brachii_left_short_head",  (-0.26, 1.30, 0.04), (0.040, 0.13, 0.04), "biceps"),
-    ("biceps_brachii_right_long_head",  ( 0.30, 1.30, 0.03), (0.045, 0.14, 0.04), "biceps"),
-    ("biceps_brachii_right_short_head", ( 0.26, 1.30, 0.04), (0.040, 0.13, 0.04), "biceps"),
-    ("triceps_brachii_left_long_head",    (-0.28, 1.30, -0.04), (0.040, 0.15, 0.04), "triceps"),
-    ("triceps_brachii_left_lateral_head", (-0.32, 1.32, -0.03), (0.035, 0.13, 0.04), "triceps"),
-    ("triceps_brachii_left_medial_head",  (-0.28, 1.25, -0.04), (0.035, 0.10, 0.03), "triceps"),
-    ("triceps_brachii_right_long_head",    ( 0.28, 1.30, -0.04), (0.040, 0.15, 0.04), "triceps"),
-    ("triceps_brachii_right_lateral_head", ( 0.32, 1.32, -0.03), (0.035, 0.13, 0.04), "triceps"),
-    ("triceps_brachii_right_medial_head",  ( 0.28, 1.25, -0.04), (0.035, 0.10, 0.03), "triceps"),
-    ("rectus_abdominis",         ( 0.00, 1.10,  0.10), (0.10, 0.15, 0.04), "core"),
-    ("external_oblique_left",   (-0.11, 1.10,  0.07), (0.05, 0.14, 0.04), "core"),
-    ("external_oblique_right",  ( 0.11, 1.10,  0.07), (0.05, 0.14, 0.04), "core"),
-    ("internal_oblique_left",   (-0.09, 1.03,  0.06), (0.04, 0.08, 0.03), "core"),
-    ("internal_oblique_right",  ( 0.09, 1.03,  0.06), (0.04, 0.08, 0.03), "core"),
-    ("transverse_abdominis",    ( 0.00, 1.05,  0.08), (0.14, 0.08, 0.025), "core"),
-    ("gluteus_maximus_left",   (-0.09, 0.92, -0.12), (0.09, 0.11, 0.07), "glutes"),
-    ("gluteus_maximus_right",  ( 0.09, 0.92, -0.12), (0.09, 0.11, 0.07), "glutes"),
-    ("gluteus_medius_left",    (-0.12, 1.00, -0.08), (0.05, 0.07, 0.05), "glutes"),
-    ("gluteus_medius_right",   ( 0.12, 1.00, -0.08), (0.05, 0.07, 0.05), "glutes"),
-    ("rectus_femoris_left",      (-0.10, 0.65,  0.07), (0.05, 0.18, 0.04), "quads"),
-    ("rectus_femoris_right",     ( 0.10, 0.65,  0.07), (0.05, 0.18, 0.04), "quads"),
-    ("vastus_lateralis_left",    (-0.14, 0.65,  0.04), (0.04, 0.18, 0.05), "quads"),
-    ("vastus_lateralis_right",   ( 0.14, 0.65,  0.04), (0.04, 0.18, 0.05), "quads"),
-    ("vastus_medialis_left",     (-0.07, 0.55,  0.05), (0.04, 0.11, 0.04), "quads"),
-    ("vastus_medialis_right",    ( 0.07, 0.55,  0.05), (0.04, 0.11, 0.04), "quads"),
-    ("vastus_intermedius_left",  (-0.10, 0.65,  0.05), (0.04, 0.17, 0.03), "quads"),
-    ("vastus_intermedius_right", ( 0.10, 0.65,  0.05), (0.04, 0.17, 0.03), "quads"),
-    ("biceps_femoris_left",   (-0.12, 0.65, -0.07), (0.045, 0.17, 0.04), "hamstrings"),
-    ("biceps_femoris_right",  ( 0.12, 0.65, -0.07), (0.045, 0.17, 0.04), "hamstrings"),
-    ("semitendinosus_left",   (-0.08, 0.65, -0.07), (0.030, 0.17, 0.03), "hamstrings"),
-    ("semitendinosus_right",  ( 0.08, 0.65, -0.07), (0.030, 0.17, 0.03), "hamstrings"),
-    ("semimembranosus_left",  (-0.10, 0.60, -0.08), (0.035, 0.14, 0.03), "hamstrings"),
-    ("semimembranosus_right", ( 0.10, 0.60, -0.08), (0.035, 0.14, 0.03), "hamstrings"),
-    ("gastrocnemius_left",   (-0.10, 0.25, -0.06), (0.045, 0.12, 0.045), "calves"),
-    ("gastrocnemius_right",  ( 0.10, 0.25, -0.06), (0.045, 0.12, 0.045), "calves"),
-    ("soleus_left",          (-0.10, 0.18, -0.05), (0.040, 0.10, 0.040), "calves"),
-    ("soleus_right",         ( 0.10, 0.18, -0.05), (0.040, 0.10, 0.040), "calves"),
+    ("pectoralis_major_left",   "spine_upper", (-0.09, 0.13,  0.11), (0.17, 0.12, 0.05), "chest"),
+    ("pectoralis_major_right",  "spine_upper", ( 0.09, 0.13,  0.11), (0.17, 0.12, 0.05), "chest"),
+    ("biceps_brachii_left_long_head",   "shoulder_L", ( 0.015, -0.14, 0.055), (0.040, 0.14, 0.040), "biceps"),
+    ("biceps_brachii_left_short_head",  "shoulder_L", (-0.015, -0.14, 0.055), (0.035, 0.13, 0.040), "biceps"),
+    ("biceps_brachii_right_long_head",  "shoulder_R", (-0.015, -0.14, 0.055), (0.040, 0.14, 0.040), "biceps"),
+    ("biceps_brachii_right_short_head", "shoulder_R", ( 0.015, -0.14, 0.055), (0.035, 0.13, 0.040), "biceps"),
+    ("triceps_brachii_left_long_head",    "shoulder_L", ( 0.00, -0.14, -0.055), (0.040, 0.15, 0.040), "triceps"),
+    ("triceps_brachii_left_lateral_head", "shoulder_L", (-0.03, -0.12, -0.045), (0.035, 0.12, 0.040), "triceps"),
+    ("triceps_brachii_left_medial_head",  "shoulder_L", ( 0.03, -0.18, -0.045), (0.030, 0.10, 0.035), "triceps"),
+    ("triceps_brachii_right_long_head",    "shoulder_R", ( 0.00, -0.14, -0.055), (0.040, 0.15, 0.040), "triceps"),
+    ("triceps_brachii_right_lateral_head", "shoulder_R", ( 0.03, -0.12, -0.045), (0.035, 0.12, 0.040), "triceps"),
+    ("triceps_brachii_right_medial_head",  "shoulder_R", (-0.03, -0.18, -0.045), (0.030, 0.10, 0.035), "triceps"),
+    ("rectus_abdominis",       "spine_mid", ( 0.00,  0.03, 0.10), (0.12, 0.17, 0.03), "core"),
+    ("external_oblique_left",  "spine_mid", (-0.11,  0.03, 0.08), (0.06, 0.15, 0.04), "core"),
+    ("external_oblique_right", "spine_mid", ( 0.11,  0.03, 0.08), (0.06, 0.15, 0.04), "core"),
+    ("internal_oblique_left",  "spine_mid", (-0.09, -0.03, 0.07), (0.05, 0.08, 0.03), "core"),
+    ("internal_oblique_right", "spine_mid", ( 0.09, -0.03, 0.07), (0.05, 0.08, 0.03), "core"),
+    ("transverse_abdominis",   "spine_mid", ( 0.00,  0.00, 0.09), (0.17, 0.09, 0.025), "core"),
+    ("gluteus_maximus_left",  "pelvis", (-0.09, -0.01, -0.11), (0.12, 0.14, 0.07), "glutes"),
+    ("gluteus_maximus_right", "pelvis", ( 0.09, -0.01, -0.11), (0.12, 0.14, 0.07), "glutes"),
+    ("gluteus_medius_left",   "pelvis", (-0.13,  0.04, -0.06), (0.06, 0.08, 0.05), "glutes"),
+    ("gluteus_medius_right",  "pelvis", ( 0.13,  0.04, -0.06), (0.06, 0.08, 0.05), "glutes"),
+    ("rectus_femoris_left",      "hip_L", ( 0.00, -0.18, 0.08), (0.055, 0.22, 0.045), "quads"),
+    ("rectus_femoris_right",     "hip_R", ( 0.00, -0.18, 0.08), (0.055, 0.22, 0.045), "quads"),
+    ("vastus_lateralis_left",    "hip_L", (-0.06, -0.18, 0.05), (0.045, 0.22, 0.055), "quads"),
+    ("vastus_lateralis_right",   "hip_R", ( 0.06, -0.18, 0.05), (0.045, 0.22, 0.055), "quads"),
+    ("vastus_medialis_left",     "hip_L", ( 0.04, -0.30, 0.06), (0.045, 0.12, 0.045), "quads"),
+    ("vastus_medialis_right",    "hip_R", (-0.04, -0.30, 0.06), (0.045, 0.12, 0.045), "quads"),
+    ("vastus_intermedius_left",  "hip_L", ( 0.00, -0.18, 0.05), (0.045, 0.18, 0.03),  "quads"),
+    ("vastus_intermedius_right", "hip_R", ( 0.00, -0.18, 0.05), (0.045, 0.18, 0.03),  "quads"),
+    ("biceps_femoris_left",   "hip_L", (-0.04, -0.22, -0.08), (0.050, 0.20, 0.045), "hamstrings"),
+    ("biceps_femoris_right",  "hip_R", ( 0.04, -0.22, -0.08), (0.050, 0.20, 0.045), "hamstrings"),
+    ("semitendinosus_left",   "hip_L", ( 0.02, -0.22, -0.08), (0.035, 0.20, 0.035), "hamstrings"),
+    ("semitendinosus_right",  "hip_R", (-0.02, -0.22, -0.08), (0.035, 0.20, 0.035), "hamstrings"),
+    ("semimembranosus_left",  "hip_L", (-0.02, -0.28, -0.09), (0.040, 0.14, 0.035), "hamstrings"),
+    ("semimembranosus_right", "hip_R", ( 0.02, -0.28, -0.09), (0.040, 0.14, 0.035), "hamstrings"),
+    ("gastrocnemius_left",  "knee_L", ( 0.00, -0.13, -0.06), (0.070, 0.14, 0.050), "calves"),
+    ("gastrocnemius_right", "knee_R", ( 0.00, -0.13, -0.06), (0.070, 0.14, 0.050), "calves"),
+    ("soleus_left",         "knee_L", ( 0.00, -0.28, -0.05), (0.055, 0.12, 0.045), "calves"),
+    ("soleus_right",        "knee_R", ( 0.00, -0.28, -0.05), (0.055, 0.12, 0.045), "calves"),
 ]
 
-# Keep a torso + head skin shell so the figure reads as humanoid.
-SKIN_PARTS = [
-    ("torso",           ( 0.00, 1.15,  0.00), (0.22, 0.50, 0.14)),
-    ("head",            ( 0.00, 1.70,  0.03), (0.11, 0.14, 0.11)),
-    ("upper_arm_left",  (-0.28, 1.30,  0.00), (0.055, 0.17, 0.055)),
-    ("upper_arm_right", ( 0.28, 1.30,  0.00), (0.055, 0.17, 0.055)),
-    ("upper_leg_left",  (-0.11, 0.63,  0.00), (0.08, 0.22, 0.09)),
-    ("upper_leg_right", ( 0.11, 0.63,  0.00), (0.08, 0.22, 0.09)),
-    ("lower_leg_left",  (-0.11, 0.22,  0.00), (0.065, 0.18, 0.07)),
-    ("lower_leg_right", ( 0.11, 0.22,  0.00), (0.065, 0.18, 0.07)),
-]
 
-MORPH_INFLATION = 0.15  # deltas = base * 0.15 → 15% uniform inflation at full influence
-
-
-def box_geometry():
-    h = 0.5
-    faces = [
-        ((0, 0,  1), [(-h, -h,  h), ( h, -h,  h), ( h,  h,  h), (-h,  h,  h)]),
-        ((0, 0, -1), [( h, -h, -h), (-h, -h, -h), (-h,  h, -h), ( h,  h, -h)]),
-        ((1, 0, 0),  [( h, -h,  h), ( h, -h, -h), ( h,  h, -h), ( h,  h,  h)]),
-        ((-1, 0, 0), [(-h, -h, -h), (-h, -h,  h), (-h,  h,  h), (-h,  h, -h)]),
-        ((0, 1, 0),  [(-h,  h,  h), ( h,  h,  h), ( h,  h, -h), (-h,  h, -h)]),
-        ((0, -1, 0), [(-h, -h, -h), ( h, -h, -h), ( h, -h,  h), (-h, -h,  h)]),
-    ]
-    positions, normals, indices = [], [], []
-    i = 0
-    for n, corners in faces:
-        for c in corners:
-            positions.extend(c)
-            normals.extend(n)
-        indices.extend([i, i + 1, i + 2, i, i + 2, i + 3])
-        i += 4
+def cylinder_geometry(radial_segments=14):
+    positions = []; normals = []; indices = []
+    for ring_y in (0.5, -0.5):
+        for i in range(radial_segments):
+            theta = 2 * math.pi * i / radial_segments
+            x = 0.5 * math.cos(theta); z = 0.5 * math.sin(theta)
+            positions.extend([x, ring_y, z])
+            normals.extend([math.cos(theta), 0, math.sin(theta)])
+    for i in range(radial_segments):
+        a = i; b = (i + 1) % radial_segments
+        c = i + radial_segments; d = ((i + 1) % radial_segments) + radial_segments
+        indices.extend([a, c, b, b, c, d])
+    top_center = len(positions) // 3
+    positions.extend([0, 0.5, 0]); normals.extend([0, 1, 0])
+    top_ring_start = len(positions) // 3
+    for i in range(radial_segments):
+        theta = 2 * math.pi * i / radial_segments
+        positions.extend([0.5 * math.cos(theta), 0.5, 0.5 * math.sin(theta)])
+        normals.extend([0, 1, 0])
+    for i in range(radial_segments):
+        indices.extend([top_center, top_ring_start + i, top_ring_start + ((i + 1) % radial_segments)])
+    bot_center = len(positions) // 3
+    positions.extend([0, -0.5, 0]); normals.extend([0, -1, 0])
+    bot_ring_start = len(positions) // 3
+    for i in range(radial_segments):
+        theta = 2 * math.pi * i / radial_segments
+        positions.extend([0.5 * math.cos(theta), -0.5, 0.5 * math.sin(theta)])
+        normals.extend([0, -1, 0])
+    for i in range(radial_segments):
+        indices.extend([bot_center, bot_ring_start + ((i + 1) % radial_segments), bot_ring_start + i])
     return positions, normals, indices
 
 
-def rep_pattern(duration, reps, amp_y, lean_x_deg=0.0):
-    times, translations, rotations = [], [], []
+def quat_axis(axis, angle):
+    half = angle / 2.0
+    s = math.sin(half); c = math.cos(half)
+    return {"X": (s, 0, 0, c), "Y": (0, s, 0, c), "Z": (0, 0, s, c)}[axis]
+
+
+def rep_phase_times(duration, reps, phase_count=5):
     per_rep = duration / reps
-    lean_rad = math.radians(lean_x_deg)
     for r in range(reps):
-        t0 = r * per_rep
-        t_mid = t0 + per_rep / 2.0
-        times.append(t0);     translations.append((0.0, 0.0, 0.0));          rotations.append(quat_from_x(0.0))
-        times.append(t_mid);  translations.append((0.0, -amp_y, 0.0));       rotations.append(quat_from_x(lean_rad))
-    times.append(duration); translations.append((0.0, 0.0, 0.0)); rotations.append(quat_from_x(0.0))
-    return times, translations, rotations
+        for p in range(phase_count):
+            frac = p / (phase_count - 1)
+            t = r * per_rep + frac * per_rep
+            yield r, frac, t
 
 
-def quat_from_x(angle_rad):
-    s = math.sin(angle_rad / 2.0); c = math.cos(angle_rad / 2.0)
-    return (s, 0.0, 0.0, c)
+def pose_curve(joint_fn, duration, reps, phase_count=5):
+    channels = {}
+    for _, frac, t in rep_phase_times(duration, reps, phase_count):
+        pose = joint_fn(frac)
+        for joint, spec in pose.items():
+            if spec[0] in ("X", "Y", "Z"):
+                axis, angle = spec
+                channels.setdefault((joint, "rotation"), []).append((t, quat_axis(axis, angle)))
+            elif spec[0] == "T":
+                _, vec = spec
+                channels.setdefault((joint, "translation"), []).append((t, tuple(vec)))
+    return channels
 
 
-ANIMATIONS = {
-    "bench_press": (24.0, 8, 0.00, 0.0),
-    "bicep_curl":  (16.0, 8, 0.00, 0.0),
-    "squat":       (18.0, 6, 0.30, 0.0),
-    "deadlift":    (18.0, 6, 0.20, 25.0),
+def bench_press_pose(phase):
+    elbow_flex = math.radians(85) * math.sin(math.pi * phase)
+    return {"shoulder_L": ("X", math.radians(-90)), "shoulder_R": ("X", math.radians(-90)),
+            "elbow_L": ("X", -elbow_flex), "elbow_R": ("X", -elbow_flex)}
+
+
+def bicep_curl_pose(phase):
+    flex = math.radians(130) * math.sin(math.pi * phase)
+    return {"shoulder_L": ("X", 0.0), "shoulder_R": ("X", 0.0),
+            "elbow_L": ("X", -flex), "elbow_R": ("X", -flex)}
+
+
+def squat_pose(phase):
+    hip  = math.radians(85) * math.sin(math.pi * phase)
+    knee = math.radians(100) * math.sin(math.pi * phase)
+    ank  = math.radians(25) * math.sin(math.pi * phase)
+    dip_y = -0.42 * math.sin(math.pi * phase)
+    return {"root": ("T", (0.0, dip_y, 0.0)),
+            "hip_L": ("X", hip), "hip_R": ("X", hip),
+            "knee_L": ("X", -knee), "knee_R": ("X", -knee),
+            "ankle_L": ("X", -ank), "ankle_R": ("X", -ank),
+            "spine_mid":   ("X", math.radians(20) * math.sin(math.pi * phase)),
+            "spine_upper": ("X", math.radians(10) * math.sin(math.pi * phase))}
+
+
+def deadlift_pose(phase):
+    hip  = math.radians(90) * math.sin(math.pi * phase)
+    knee = math.radians(35) * math.sin(math.pi * phase)
+    torso = math.radians(60) * math.sin(math.pi * phase)
+    dip_y = -0.18 * math.sin(math.pi * phase)
+    shoulder = math.radians(5) * math.sin(math.pi * phase)
+    return {"root": ("T", (0.0, dip_y, 0.0)),
+            "hip_L": ("X", hip), "hip_R": ("X", hip),
+            "knee_L": ("X", -knee), "knee_R": ("X", -knee),
+            "spine_mid": ("X", torso * 0.5), "spine_upper": ("X", torso * 0.5),
+            "shoulder_L": ("X", shoulder), "shoulder_R": ("X", shoulder)}
+
+
+EXERCISES = {
+    "bench_press": (24.0, 8, bench_press_pose),
+    "bicep_curl":  (16.0, 8, bicep_curl_pose),
+    "squat":       (18.0, 6, squat_pose),
+    "deadlift":    (18.0, 6, deadlift_pose),
 }
 
 
-def pack_floats(values): return struct.pack("<%df" % len(values), *values)
+def pack_floats(values):  return struct.pack("<%df" % len(values), *values)
 def pack_ushorts(values): return struct.pack("<%dH" % len(values), *values)
 
 
@@ -138,8 +234,7 @@ def align4(buf, pad_byte=b"\x00"):
 
 
 def build_glb():
-    positions, normals, indices = box_geometry()
-    # Morph delta positions: base * MORPH_INFLATION. Same vertex order as base.
+    positions, normals, indices = cylinder_geometry(radial_segments=14)
     delta_positions = [p * MORPH_INFLATION for p in positions]
 
     bin_data = bytearray()
@@ -150,173 +245,144 @@ def build_glb():
         offset = len(bin_data)
         bin_data.extend(data_bytes)
         while len(bin_data) % 4: bin_data.append(0)
-        view = {"buffer": 0, "byteOffset": offset, "byteLength": len(data_bytes)}
-        if target is not None: view["target"] = target
-        return view
+        v = {"buffer": 0, "byteOffset": offset, "byteLength": len(data_bytes)}
+        if target is not None: v["target"] = target
+        return v
 
-    # Shared base accessors (0..2)
     buffer_views.append(add_view(pack_floats(positions), target=34962))
     pos_min = [min(positions[i::3]) for i in range(3)]
     pos_max = [max(positions[i::3]) for i in range(3)]
-    accessors.append({
-        "bufferView": len(buffer_views) - 1, "componentType": 5126,
-        "count": len(positions) // 3, "type": "VEC3",
-        "min": pos_min, "max": pos_max,
-    })
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                      "count": len(positions) // 3, "type": "VEC3",
+                      "min": pos_min, "max": pos_max})
     pos_accessor = len(accessors) - 1
 
     buffer_views.append(add_view(pack_floats(normals), target=34962))
-    accessors.append({
-        "bufferView": len(buffer_views) - 1, "componentType": 5126,
-        "count": len(normals) // 3, "type": "VEC3",
-    })
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                      "count": len(normals) // 3, "type": "VEC3"})
     nrm_accessor = len(accessors) - 1
 
     buffer_views.append(add_view(pack_ushorts(indices), target=34963))
-    accessors.append({
-        "bufferView": len(buffer_views) - 1, "componentType": 5123,
-        "count": len(indices), "type": "SCALAR",
-    })
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5123,
+                      "count": len(indices), "type": "SCALAR"})
     idx_accessor = len(accessors) - 1
 
-    # Morph delta POSITION accessor (shared by every muscle mesh)
     buffer_views.append(add_view(pack_floats(delta_positions)))
     dmin = [min(delta_positions[i::3]) for i in range(3)]
     dmax = [max(delta_positions[i::3]) for i in range(3)]
-    accessors.append({
-        "bufferView": len(buffer_views) - 1, "componentType": 5126,
-        "count": len(delta_positions) // 3, "type": "VEC3",
-        "min": dmin, "max": dmax,
-    })
+    accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                      "count": len(delta_positions) // 3, "type": "VEC3",
+                      "min": dmin, "max": dmax})
     delta_pos_accessor = len(accessors) - 1
 
-    # Materials
     materials = [
-        {   # 0: skin
-            "name": "skin_placeholder",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.90, 0.78, 0.72, 0.22],
-                "metallicFactor": 0.0, "roughnessFactor": 0.9,
-            },
-            "alphaMode": "BLEND", "doubleSided": True,
-        },
-        {   # 1: muscle
-            "name": "muscle_default",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.78, 0.18, 0.18, 1.0],
-                "metallicFactor": 0.0, "roughnessFactor": 0.6,
-            },
-        },
+        {"name": "skin_placeholder",
+         "pbrMetallicRoughness": {"baseColorFactor": [0.90, 0.78, 0.72, 0.22],
+                                   "metallicFactor": 0.0, "roughnessFactor": 0.9},
+         "alphaMode": "BLEND", "doubleSided": True},
+        {"name": "muscle_default",
+         "pbrMetallicRoughness": {"baseColorFactor": [0.78, 0.18, 0.18, 1.0],
+                                   "metallicFactor": 0.0, "roughnessFactor": 0.6}},
     ]
     MAT_SKIN, MAT_MUSCLE = 0, 1
 
-    # One mesh per muscle (so each gets its own targetNames) + one skin mesh.
-    meshes = []
-
-    # Skin mesh (no morph targets — only muscles contract)
-    meshes.append({
-        "name": "mesh_skin",
-        "primitives": [{
-            "attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
-            "indices": idx_accessor,
-            "material": MAT_SKIN,
-            "mode": 4,
-        }],
-    })
+    meshes = [{"name": "mesh_skin",
+                "primitives": [{"attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
+                                "indices": idx_accessor, "material": MAT_SKIN, "mode": 4}]}]
     MESH_SKIN = 0
 
+    # One mesh per muscle so each gets its own targetNames
     muscle_mesh_indices = {}
     for name, *_rest in [(m[0],) for m in MUSCLES]:
         meshes.append({
             "name": f"mesh_{name}",
-            "primitives": [{
-                "attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
-                "indices": idx_accessor,
-                "material": MAT_MUSCLE,
-                "mode": 4,
-                "targets": [{"POSITION": delta_pos_accessor}],
-            }],
+            "primitives": [{"attributes": {"POSITION": pos_accessor, "NORMAL": nrm_accessor},
+                            "indices": idx_accessor,
+                            "material": MAT_MUSCLE,
+                            "mode": 4,
+                            "targets": [{"POSITION": delta_pos_accessor}]}],
             "weights": [0.0],
             "extras": {"targetNames": [f"contract_{name}_01"]},
         })
         muscle_mesh_indices[name] = len(meshes) - 1
 
-    # Nodes
     nodes = []
-    def add_node(name, children=None, mesh=None, translation=None, scale=None, rotation=None):
-        node = {"name": name}
-        if children: node["children"] = children
-        if mesh is not None: node["mesh"] = mesh
-        if translation is not None: node["translation"] = list(translation)
-        if scale is not None: node["scale"] = list(scale)
-        if rotation is not None: node["rotation"] = list(rotation)
-        nodes.append(node)
+    joint_indices = {}
+    parent_children = {}
+
+    def add_node(**kwargs):
+        nodes.append(kwargs)
         return len(nodes) - 1
 
-    skin_leaf_ids = [add_node(f"skin/{n}", mesh=MESH_SKIN, translation=t, scale=s) for n, t, s in SKIN_PARTS]
-    muscle_leaf_ids = []
-    for name, t, s, _group in MUSCLES:
-        muscle_leaf_ids.append(add_node(
-            f"muscles/{name}",
-            mesh=muscle_mesh_indices[name],
-            translation=t, scale=s,
-        ))
+    for name, parent, translation in JOINTS:
+        node_idx = add_node(name=name, translation=list(translation))
+        joint_indices[name] = node_idx
+        if parent is not None:
+            parent_children.setdefault(parent, []).append(node_idx)
 
-    human_skin_id = add_node("human/skin", children=skin_leaf_ids)
-    muscles_root_id = add_node("muscles", children=muscle_leaf_ids)
-    human_root_id = add_node("human", children=[human_skin_id])
-    scene_root_id = add_node("root", children=[human_root_id, muscles_root_id],
-                             translation=(0.0, 0.0, 0.0), rotation=quat_from_x(0.0))
+    for name, parent, translation, scale in SKIN_LIMBS:
+        node_idx = add_node(name=name, mesh=MESH_SKIN,
+                            translation=list(translation), scale=list(scale))
+        parent_children.setdefault(parent, []).append(node_idx)
 
-    # Animations (root-level translation/rotation only, same shape as placeholder)
+    for name, parent, translation, scale, _group in MUSCLES:
+        node_idx = add_node(name=f"muscles/{name}",
+                            mesh=muscle_mesh_indices[name],
+                            translation=list(translation), scale=list(scale))
+        parent_children.setdefault(parent, []).append(node_idx)
+
+    for parent_name, child_list in parent_children.items():
+        parent_idx = joint_indices.get(parent_name)
+        if parent_idx is None:
+            raise RuntimeError(f"Unknown parent joint: {parent_name!r}")
+        nodes[parent_idx].setdefault("children", []).extend(child_list)
+
+    scene_root = joint_indices["root"]
+
     animations = []
-    for anim_name, (duration, reps, amp_y, lean) in ANIMATIONS.items():
-        times, translations, rotations = rep_pattern(duration, reps, amp_y, lean)
+    for anim_name, (duration, reps, pose_fn) in EXERCISES.items():
+        anim_channels = []
+        anim_samplers = []
+        channels = pose_curve(pose_fn, duration, reps)
 
-        t_bytes = pack_floats(times)
-        buffer_views.append(add_view(t_bytes))
-        accessors.append({
-            "bufferView": len(buffer_views) - 1, "componentType": 5126,
-            "count": len(times), "type": "SCALAR",
-            "min": [min(times)], "max": [max(times)],
-        })
-        t_accessor = len(accessors) - 1
+        for (joint_name, path), keys in channels.items():
+            joint_idx = joint_indices.get(joint_name)
+            if joint_idx is None:
+                continue
+            keys = sorted(keys, key=lambda k: k[0])
+            times = [k[0] for k in keys]
+            values = [k[1] for k in keys]
+            buffer_views.append(add_view(pack_floats(times)))
+            accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                              "count": len(times), "type": "SCALAR",
+                              "min": [min(times)], "max": [max(times)]})
+            t_accessor = len(accessors) - 1
 
-        tr_flat = [c for v in translations for c in v]
-        buffer_views.append(add_view(pack_floats(tr_flat)))
-        accessors.append({
-            "bufferView": len(buffer_views) - 1, "componentType": 5126,
-            "count": len(translations), "type": "VEC3",
-        })
-        tr_accessor = len(accessors) - 1
+            if path == "rotation":
+                flat = [c for v in values for c in v]
+                buffer_views.append(add_view(pack_floats(flat)))
+                accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                                  "count": len(values), "type": "VEC4"})
+                v_accessor = len(accessors) - 1
+            else:
+                flat = [c for v in values for c in v]
+                buffer_views.append(add_view(pack_floats(flat)))
+                accessors.append({"bufferView": len(buffer_views) - 1, "componentType": 5126,
+                                  "count": len(values), "type": "VEC3"})
+                v_accessor = len(accessors) - 1
 
-        rt_flat = [c for q in rotations for c in q]
-        buffer_views.append(add_view(pack_floats(rt_flat)))
-        accessors.append({
-            "bufferView": len(buffer_views) - 1, "componentType": 5126,
-            "count": len(rotations), "type": "VEC4",
-        })
-        rt_accessor = len(accessors) - 1
+            sampler_idx = len(anim_samplers)
+            anim_samplers.append({"input": t_accessor, "interpolation": "LINEAR", "output": v_accessor})
+            anim_channels.append({"sampler": sampler_idx,
+                                   "target": {"node": joint_idx, "path": path}})
 
-        animations.append({
-            "name": anim_name,
-            "channels": [
-                {"sampler": 0, "target": {"node": scene_root_id, "path": "translation"}},
-                {"sampler": 1, "target": {"node": scene_root_id, "path": "rotation"}},
-            ],
-            "samplers": [
-                {"input": t_accessor, "interpolation": "LINEAR", "output": tr_accessor},
-                {"input": t_accessor, "interpolation": "LINEAR", "output": rt_accessor},
-            ],
-        })
+        animations.append({"name": anim_name, "channels": anim_channels, "samplers": anim_samplers})
 
     gltf = {
-        "asset": {
-            "version": "2.0",
-            "generator": "gym-anatomy-viewer mock-real builder (NOT anatomically accurate, with morph targets)",
-        },
+        "asset": {"version": "2.0",
+                   "generator": "gym-anatomy-viewer rigged humanoid + morph targets (NOT anatomically accurate)"},
         "scene": 0,
-        "scenes": [{"name": "scene", "nodes": [scene_root_id]}],
+        "scenes": [{"name": "scene", "nodes": [scene_root]}],
         "nodes": nodes,
         "meshes": meshes,
         "materials": materials,
@@ -337,7 +403,7 @@ def build_glb():
 
     OUT_PATH.write_bytes(header + json_chunk + bin_chunk)
     print(f"wrote {OUT_PATH}  ({OUT_PATH.stat().st_size} bytes)")
-    print(f"  muscles: {len(MUSCLES)}   morph targets: {len(MUSCLES)}  (one per muscle)")
+    print(f"  joints: {len(JOINTS)}   skin: {len(SKIN_LIMBS)}   muscles: {len(MUSCLES)} (each with morph target)")
     print(f"  animations: {len(animations)}")
 
 
