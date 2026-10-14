@@ -313,6 +313,11 @@ function mountGltf(gltf, originId) {
   // Refresh dependent UI
   skinToggleApply();
   skeletonToggleApply();
+  // Hide the "Show skeleton" row when the glb has no skeleton/* meshes — a
+  // toggle that does nothing is just noise. Shown again when a glb that
+  // does carry skeleton meshes is loaded.
+  const skeletonRow = skeletonToggle.closest('label');
+  if (skeletonRow) skeletonRow.style.display = state.skeletonNodes.length ? '' : 'none';
   updateModelInfo();
   refreshMappingStatus();
 }
