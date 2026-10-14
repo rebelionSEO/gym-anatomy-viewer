@@ -59,10 +59,22 @@ The demo loads the glb, both JSON files, and shows:
 - toggle muscle groups
 - isolate a single muscle
 - transparent / solid / hidden skin shell
-- per-frame activation **tinting** of each muscle (base group color →
-  yellow-hot gradient driven by `muscles_activation.json`)
+- **drag-and-drop a custom `.glb`** onto the viewer (or use the file picker)
+  — the viewer tears down the current model and mounts the new one
+- **tolerant auto-mapping** between muscle keys and the loaded glb's mesh
+  names; override any mapping in the **Edit mapping…** modal, saved per
+  filename in `localStorage`
+- **morph target driving**: if a mapped mesh has morph targets like
+  `contract_{muscle}_01`, activation drives `morphTargetInfluences`
+  directly; otherwise the viewer falls back to color tint + emissive glow +
+  a small uniform scale pulse
 - an overlay chart of the selected muscle's activation vs. time with a live
   playhead
+- a floating `?` pill opens a modal that labels the demo as placeholder
+  hardware
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full change list and
+[`TESTING.md`](TESTING.md) for a manual test checklist.
 
 ## Loading snippet (three.js)
 
