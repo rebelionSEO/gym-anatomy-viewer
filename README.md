@@ -59,6 +59,13 @@ The demo loads the glb, both JSON files, and shows:
 - toggle muscle groups
 - isolate a single muscle
 - transparent / solid / hidden skin shell
+- **visual polish at runtime** — the viewer swaps the glb's primitive
+  cylinders for `CapsuleGeometry` on long limbs and `SphereGeometry` on
+  the torso/head/muscles (which become ellipsoids under the mesh's
+  non-uniform scale), enables a 3-point light rig with soft shadows, and
+  renders against a radial-gradient backdrop. Nothing in the glb file
+  changes; this is cosmetic. Meshes with morph targets or high vertex
+  counts (real anatomy) are passed through untouched.
 - **drag-and-drop a custom `.glb`** onto the viewer (or use the file picker)
   — the viewer tears down the current model and mounts the new one
 - **tolerant auto-mapping** between muscle keys and the loaded glb's mesh

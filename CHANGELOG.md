@@ -6,6 +6,22 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Runtime visual polish pass in `demo/app.js:polishGeometryAndMaterials`.
+  After every glb mount, long-limb skin meshes (upper arms, forearms,
+  thighs, shins, neck) swap their cylinder geometry for `CapsuleGeometry`
+  sized to the mesh's current scale, and head/torso/pelvis/hand/foot/muscle
+  meshes swap for `SphereGeometry` (the mesh's non-uniform scale turns the
+  sphere into an ellipsoid). Materials soften — warmer skin tone, lower
+  metalness. Meshes with morph targets or more than ~300 vertices are
+  passed through untouched so the sample_real glb's morph driving keeps
+  working and any real anatomy glb is unaffected.
+- 3-point light rig in `demo/app.js`: hemisphere ambient (warm sky, cool
+  ground), warm key light with PCF soft shadows, cool fill, warm rim.
+  Renderer uses ACES filmic tone mapping. Ground now receives shadows.
+- Soft radial-gradient backdrop on `#stage` (via CSS); renderer is
+  alpha-clear so the gradient shows through.
+
+### Added (earlier in this cycle)
 - `sample_real_anatomy.glb` at repo root — a mock "real anatomy" file with
   per-muscle morph targets (`contract_{muscle_name}_01`, ~15% uniform
   inflation at full influence). Produced by

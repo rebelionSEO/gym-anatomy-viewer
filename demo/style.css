@@ -165,6 +165,10 @@ body {
 #stage {
   position: relative;
   min-height: 0;
+  /* Soft radial gradient — the renderer is alpha-clear, so this shows
+     through and gives the figure a studio-ish backdrop instead of flat black. */
+  background:
+    radial-gradient(ellipse at 50% 38%, #353d4b 0%, #171a21 55%, #0b0d12 100%);
 }
 
 #viewer {

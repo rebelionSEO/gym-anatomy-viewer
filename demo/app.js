@@ -72,12 +72,20 @@ const helpModal = $('helpModal');
 // Scene setup
 // ---------------------------------------------------------------------------
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+// Soft shadows let the key light drop a plausible contact shadow under the
+// figure, which goes a long way toward "stands on the floor" instead of
+// "floats in black space".
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14171c);
+// Background is transparent — a radial CSS gradient on #stage shows through.
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 camera.position.set(0, 1.1, 3.2);
@@ -86,19 +94,37 @@ const orbit = new OrbitControls(camera, canvas);
 orbit.target.set(0, 1.1, 0);
 orbit.enableDamping = true;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
-keyLight.position.set(2, 3, 2);
+// --- 3-point rig + hemisphere ambient --------------------------------------
+scene.add(new THREE.HemisphereLight(0xdcdfe6, 0x2a2320, 0.55));
+
+const keyLight = new THREE.DirectionalLight(0xfff2e0, 1.15);
+keyLight.position.set(2.2, 3.4, 2.0);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+keyLight.shadow.bias = -0.0005;
+keyLight.shadow.camera.near = 0.2;
+keyLight.shadow.camera.far  = 10;
+keyLight.shadow.camera.left   = -1.6;
+keyLight.shadow.camera.right  =  1.6;
+keyLight.shadow.camera.top    =  2.4;
+keyLight.shadow.camera.bottom = -0.4;
 scene.add(keyLight);
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-fillLight.position.set(-2, 1.5, -1);
+
+const fillLight = new THREE.DirectionalLight(0xa8bcd0, 0.35);
+fillLight.position.set(-2.5, 1.6, -0.5);
 scene.add(fillLight);
 
+const rimLight = new THREE.DirectionalLight(0xffd8a8, 0.55);
+rimLight.position.set(0.0, 1.8, -2.8);
+scene.add(rimLight);
+
+// Ground now receives the shadow instead of being flat-shaded.
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(2.2, 48),
-  new THREE.MeshBasicMaterial({ color: 0x0b0d10 })
+  new THREE.CircleGeometry(2.4, 64),
+  new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 0.95, metalness: 0.0 })
 );
 ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
 scene.add(ground);
 
 function resize() {
@@ -292,6 +318,8 @@ function mountGltf(gltf, originId) {
     }
   });
 
+  polishGeometryAndMaterials(state.modelRoot);
+
   // Resolve mapping: saved mapping (if any) wins, then auto-match fills in.
   const saved = loadMappingFor(originId);
   const auto  = autoMatchMapping(MUSCLE_KEYS, state.availableMeshNames);
@@ -320,6 +348,88 @@ function mountGltf(gltf, originId) {
   if (skeletonRow) skeletonRow.style.display = state.skeletonNodes.length ? '' : 'none';
   updateModelInfo();
   refreshMappingStatus();
+}
+
+// ★ VISUAL POLISH: swap the glb's primitive cylinders for smoother shapes at
+// runtime (spheres → ellipsoids, capsules for long limbs). Also softens
+// materials and enables shadows. Does NOT touch meshes with morph targets so
+// the sample_real_anatomy.glb's morph driving keeps working. Also does
+// nothing to high-vertex meshes (real anatomy), so dropping a real anatomy
+// glb is unaffected.
+//
+// This is cosmetic only; the glb's node graph, hierarchy, animation targets,
+// and muscle naming contract are untouched.
+// Base sphere — cloned per mesh so disposing one mesh's geometry on teardown
+// doesn't invalidate the others.
+const SPHERE_GEOM_TEMPLATE = new THREE.SphereGeometry(0.5, 20, 14);
+const PRIMITIVE_VERT_LIMIT = 300;  // our cylinder is ~56 verts; anything much bigger is "real geometry"
+
+// Nodes that look better as a stretched capsule than a stretched sphere
+// (long aspect ratio compared to cross-section).
+const CAPSULE_SKIN_NAMES = new Set([
+  'skin/neck',
+  'skin/upperarm_L', 'skin/upperarm_R',
+  'skin/forearm_L',  'skin/forearm_R',
+  'skin/thigh_L',    'skin/thigh_R',
+  'skin/shin_L',     'skin/shin_R',
+]);
+
+function polishGeometryAndMaterials(root) {
+  root.traverse(obj => {
+    if (!obj.isMesh) return;
+
+    // Shadows across the board — key light writes the shadow map.
+    obj.castShadow = true;
+    obj.receiveShadow = true;
+
+    // Leave anything with morph targets alone (sample_real glb needs them).
+    const hasMorphs = obj.morphTargetDictionary && Object.keys(obj.morphTargetDictionary).length > 0;
+    // Leave anything that's clearly real geometry alone.
+    const isPrimitive = obj.geometry?.attributes?.position?.count <= PRIMITIVE_VERT_LIMIT;
+
+    if (!hasMorphs && isPrimitive) {
+      upgradeGeometry(obj);
+    }
+
+    // Material softening — only applies to our own materials (MeshStandard).
+    const mat = obj.material;
+    if (mat && mat.isMeshStandardMaterial) {
+      if (obj.name.startsWith('skin/')) {
+        // Flesh-ish tone, matte, keeps translucency behavior from skinToggleApply.
+        mat.color.setHex(0xd8b6a0);
+        mat.roughness = 0.85;
+        mat.metalness = 0.0;
+        obj.castShadow = false;  // transparent skin produces ugly shadow blocks
+      } else if (obj.name.startsWith('muscles/')) {
+        mat.roughness = 0.55;
+        mat.metalness = 0.0;
+      } else if (obj.name.startsWith('skeleton/')) {
+        mat.roughness = 0.4;
+        mat.metalness = 0.1;
+      }
+    }
+  });
+}
+
+function upgradeGeometry(mesh) {
+  const sx = mesh.scale.x, sy = mesh.scale.y, sz = mesh.scale.z;
+  const diameter = (sx + sz) / 2;
+  const cylLength = sy - diameter;
+
+  if (CAPSULE_SKIN_NAMES.has(mesh.name) && cylLength > 0.01) {
+    // Bake real dimensions into the capsule geometry and neutralize the
+    // mesh's scale (we're swapping cylinder → capsule for long limbs, which
+    // benefit from true hemispherical caps rather than a stretched sphere).
+    const geom = new THREE.CapsuleGeometry(diameter / 2, cylLength, 6, 16);
+    mesh.geometry.dispose();
+    mesh.geometry = geom;
+    mesh.scale.set(1, 1, 1);
+  } else {
+    // Everything else becomes a sphere; the mesh's existing non-uniform
+    // scale turns that sphere into an ellipsoid (chest, head, muscles).
+    mesh.geometry.dispose();
+    mesh.geometry = SPHERE_GEOM_TEMPLATE.clone();
+  }
 }
 
 // Resolve current state.mapping to actual mesh references. Clone materials so
