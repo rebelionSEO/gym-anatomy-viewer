@@ -87,11 +87,90 @@ other candidates listed in `app.js:morphKeyCandidates`).
   dropdown of every named mesh in the current glb.
 - Red muscle-key label = currently unmapped. Teal = auto-matched. White =
   manually set.
+- **Hover a row** — the matching mesh is outlined in yellow in the main
+  viewer (THREE.BoxHelper). Changing the dropdown repaints the outline.
+  Mouse-off clears it; closing the modal clears it.
 - Change a mapping and click **Save & apply**. The viewer updates
   immediately and the modal closes. A toast confirms the save count.
 - Reload the page. The viewer boots on the default glb; your mapping for
   "default" is restored from localStorage.
-- Click **Reset** in the sidebar to wipe every saved mapping. Confirm.
+- **Clear mapping for this file** inside the modal wipes just the current
+  file's saved mapping and re-runs auto-match. **Reset** in the sidebar
+  wipes every saved mapping across every file.
+
+### 7a. Mapping persistence (end-to-end)
+
+Flow to confirm a round-trip through `localStorage`:
+
+1. Load **sample real model** (button in the sidebar). Mapping status reads
+   `40 / 40 muscles mapped (sample_real_anatomy.glb)`.
+2. Open **Edit mapping…**. Change any one row's mesh (e.g. map
+   `pectoralis_major_left` to `mesh_biceps_brachii_left_long_head` — a
+   deliberately wrong match so you can see it). Click **Save & apply**.
+3. Toast confirms the save; the viewer shows the "wrong" mesh glowing on
+   the chest during a `bench_press` activation peak.
+4. Reload the page (`Cmd-R` / `Ctrl-R`). Click **Load sample real model**
+   again. Open the mapping modal: the wrong row is still assigned
+   (persisted). Mapping status still reads `40 / 40`.
+5. Open DevTools → Application → Local Storage → your origin → the key
+   `gym-anatomy-viewer:mappings` should contain a `sample_real_anatomy.glb`
+   object with the override.
+6. Click **Clear mapping for this file** inside the modal. Confirm. The
+   row flips back to the auto-matched mesh and the override is removed
+   from localStorage.
+
+### 7b. Morph target driving (end-to-end)
+
+The bundled placeholder has NO morph targets so you'll always see the
+fallback tint + scale pulse. The sample real model has one morph target
+per muscle (`contract_{muscle_name}_01`) that inflates the mesh ~15% at
+full influence. Flow:
+
+1. Click **Load sample real model**. Pick `bicep_curl` from the Animation
+   dropdown. Press Space to play.
+2. Watch both biceps meshes. During each rep's concentric phase (middle of
+   each 2-second rep) you should see the muscle *scale up uniformly* via
+   morph target influence. This is **not** the fallback scale pulse — it's
+   `morphTargetInfluences[0]` being driven directly from the activation
+   array. Confirm by opening DevTools and inspecting a biceps mesh in the
+   console:
+   ```js
+   // In DevTools console, with the demo open and sample loaded:
+   // Find any biceps mesh via its name; influences[0] oscillates 0..1.
+   ```
+3. Switch to `squat`. The quad and glute meshes now inflate on each
+   concentric; biceps stay flat (activation ≈ 0 in `muscles_activation.json`).
+4. For comparison: click **Default** to swap back to the placeholder, play
+   the same clip. The muscles still react, but via the fallback — color
+   lerps toward yellow and the scale pulse is uniform ~6% (vs. 15% morph).
+
+If no muscles move at all when playing on the sample model, check the
+browser console for an error about `morphTargetDictionary` or
+`extras.targetNames`; your glb may have morph targets with unexpected
+names. The viewer tries six name variants
+(see `demo/app.js: morphKeyCandidates`).
+
+### 7c. Keyboard shortcuts
+
+With the viewer focused and no modal open:
+- Press **Space** — the current clip toggles between play and pause (same
+  as clicking Play / Pause).
+- Press **S** — the Show skin checkbox flips and the skin shell appears or
+  disappears.
+- Open the help pill (`?`) or the mapping modal. Try pressing Space; it
+  should NOT play/pause. Close the modal and try again; it should work.
+- Click into the file-picker label and tab to the muscle-isolate dropdown.
+  Try pressing Space while the dropdown is focused; it should open the
+  dropdown (default browser behavior), NOT play/pause.
+
+### Screenshot reference
+
+A reference screenshot of the sample-model-loaded state lives at
+[`docs/screenshots/sample_loaded.png`](docs/screenshots/sample_loaded.png).
+It won't exist in a fresh clone — see
+[`docs/screenshots/README.md`](docs/screenshots/README.md) for what to
+capture and how. If you run the sample flow and your viewer looks
+materially different from the reference once it's there, flag it.
 
 ### 8. Other UI controls
 

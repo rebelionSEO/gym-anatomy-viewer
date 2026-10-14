@@ -6,6 +6,29 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `sample_real_anatomy.glb` at repo root — a mock "real anatomy" file with
+  per-muscle morph targets (`contract_{muscle_name}_01`, ~15% uniform
+  inflation at full influence). Produced by
+  `scripts/build-mock-real-glb.py`. Geometry is still primitive boxes;
+  this exists to exercise the morph-target code path end-to-end without a
+  real anatomy source.
+- **Load sample real model** button in the Model section fetches the above
+  glb and auto-maps it (40/40 on the canonical naming). Testers can see
+  morph-target driving in one click.
+- Mapping modal — **hover preview**: hovering a row outlines the matching
+  mesh in the viewer with a yellow box helper. Non-destructive (the
+  activation driver keeps running under it) and clears on mouse-off or
+  modal close.
+- Mapping modal — **Clear mapping for this file** button wipes just the
+  current file's saved mapping (sidebar **Reset** still clears every file).
+- Keyboard shortcuts: `Space` plays/pauses the current clip; `S` toggles
+  the skin shell. Suppressed when any modal is open or focus is inside a
+  form control.
+- `docs/screenshots/README.md` with instructions for capturing the
+  `sample_loaded.png` reference image.
+- TESTING.md gained sections **7a** (mapping persistence end-to-end), **7b**
+  (morph target driving end-to-end), **7c** (keyboard shortcuts), and a
+  **Screenshot reference** pointer.
 - Drag-and-drop and file-input loading of custom `.glb` files directly in
   the viewer; no code edit required to try a new model.
 - Tolerant auto-mapping between `ui_manifest.json` muscle keys and the
