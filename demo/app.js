@@ -205,6 +205,10 @@ function autoMatchMapping(muscleKeys, availableMeshNames) {
     const norm = normalizeName(key);
     if (byNorm.has(norm)) mapping[key] = byNorm.get(norm);
   }
+  console.log(
+    `[gym-anatomy-viewer] autoMatchMapping: matched ${Object.keys(mapping).length}/${muscleKeys.length} ` +
+    `against ${availableMeshNames.length} meshes`
+  );
   return mapping;
 }
 
@@ -351,6 +355,13 @@ function applyMappingToScene() {
       }
     }
   }
+
+  // Diagnostic: console.log so testers can confirm mapping on each
+  // mountGltf and after every mapping-modal save.
+  console.log(
+    `[gym-anatomy-viewer] applyMappingToScene: ${state.muscleNodes.size}/${MUSCLE_KEYS.length} muscles bound ` +
+    `(originId=${state.originId}, availableMeshes=${state.availableMeshNames.length})`
+  );
 }
 
 function buildClipList(gltfAnimations, preferredNames) {
